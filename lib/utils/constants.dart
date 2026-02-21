@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-class AppColors {
+// ⚠️ RENAMED from AppColors → LegacyAppColors to avoid clash with new app_theme.dart
+// Used by: detection_screen.dart, history_screen.dart, doctor_list_screen.dart, result_screen.dart
+class LegacyAppColors {
   static const Color primaryColor = Color(0xFF6C63FF);
   static const Color secondaryColor = Color(0xFF4ECDC4);
   static const Color accentColor = Color(0xFFFF6B6B);

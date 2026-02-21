@@ -23,12 +23,12 @@ class DoctorCard extends StatelessWidget {
                   width: 50,
                   height: 50,
                   decoration: BoxDecoration(
-                    color: AppColors.primaryColor.withOpacity(0.1),
+                    color: LegacyAppColors.primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(25),
                   ),
                   child: const Icon(
                     Icons.local_hospital,
-                    color: AppColors.primaryColor,
+                    color: LegacyAppColors.primaryColor,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -44,7 +44,7 @@ class DoctorCard extends StatelessWidget {
                       Text(
                         doctor.specialty,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: LegacyAppColors.textSecondary,
                         ),
                       ),
                     ],
@@ -58,7 +58,7 @@ class DoctorCard extends StatelessWidget {
                 const Icon(
                   Icons.location_on,
                   size: 16,
-                  color: AppColors.textSecondary,
+                  color: LegacyAppColors.textSecondary,
                 ),
                 const SizedBox(width: 4),
                 Expanded(
@@ -85,7 +85,7 @@ class DoctorCard extends StatelessWidget {
                 const Icon(
                   Icons.directions_walk,
                   size: 16,
-                  color: AppColors.textSecondary,
+                  color: LegacyAppColors.textSecondary,
                 ),
                 const SizedBox(width: 4),
                 Text(
@@ -104,7 +104,7 @@ class DoctorCard extends StatelessWidget {
                     icon: const Icon(Icons.directions, size: 18),
                     label: const Text('Directions'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primaryColor,
+                      foregroundColor: LegacyAppColors.primaryColor,
                     ),
                   ),
                 ),
@@ -116,7 +116,7 @@ class DoctorCard extends StatelessWidget {
                       icon: const Icon(Icons.phone, size: 18),
                       label: const Text('Call'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryColor,
+                        backgroundColor: LegacyAppColors.primaryColor,
                         foregroundColor: Colors.white,
                       ),
                     ),

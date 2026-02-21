@@ -46,6 +46,8 @@ dependencies:
   # Image Handling
   image_picker: ^1.0.4
   path_provider: ^2.1.1
+  camera: ^0.10.6
+  path: ^1.9.0
 
   # Location & Maps
   geolocator: ^10.1.0
@@ -71,6 +73,8 @@ dependencies:
   flutter_dotenv: ^5.1.0
   permission_handler: ^11.1.0
   url_launcher: ^6.2.2
+  google_fonts: ^6.1.0
+  webview_flutter: ^4.4.2
 
 dev_dependencies:
   flutter_test:

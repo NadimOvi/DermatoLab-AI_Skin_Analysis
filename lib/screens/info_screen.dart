@@ -35,7 +35,7 @@ class InfoScreen extends StatelessWidget {
                   const Icon(
                     Icons.error_outline,
                     size: 64,
-                    color: AppColors.errorColor,
+                    color: LegacyAppColors.errorColor,
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -46,7 +46,7 @@ class InfoScreen extends StatelessWidget {
                   Text(
                     state.error,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: LegacyAppColors.textSecondary,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -76,14 +76,14 @@ class InfoScreen extends StatelessWidget {
                     AppStrings.recentDiseaseInfo,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                      color: LegacyAppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Stay informed about common skin conditions',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: LegacyAppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -214,17 +214,17 @@ class InfoScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.warningColor.withOpacity(0.1),
+                    color: LegacyAppColors.warningColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: AppColors.warningColor.withOpacity(0.3),
+                      color: LegacyAppColors.warningColor.withOpacity(0.3),
                     ),
                   ),
                   child: Row(
                     children: [
                       const Icon(
                         Icons.info_outline,
-                        color: AppColors.warningColor,
+                        color: LegacyAppColors.warningColor,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -258,7 +258,7 @@ class InfoScreen extends StatelessWidget {
         Text(
           content,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: AppColors.textSecondary,
+            color: LegacyAppColors.textSecondary,
             height: 1.5,
           ),
         ),
@@ -277,7 +277,7 @@ class InfoScreen extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(icon, size: 20, color: AppColors.primaryColor),
+            Icon(icon, size: 20, color: LegacyAppColors.primaryColor),
             const SizedBox(width: 8),
             Text(
               title,
@@ -299,7 +299,7 @@ class InfoScreen extends StatelessWidget {
                   child: Icon(
                     Icons.circle,
                     size: 6,
-                    color: AppColors.primaryColor,
+                    color: LegacyAppColors.primaryColor,
                   ),
                 ),
                 const SizedBox(width: 12),

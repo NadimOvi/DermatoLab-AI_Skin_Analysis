@@ -1,3 +1,8 @@
+// ============================================================================
+// main.dart — updated to use SplashScreen as entry point + dark theme
+// ============================================================================
+
+import 'package:dermatolabapp/screens/splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -8,16 +13,11 @@ import 'blocs/info/info_bloc.dart';
 import 'repositories/ml_repository.dart';
 import 'repositories/disease_info_repository.dart';
 import 'repositories/location_repository.dart';
-import 'screens/home_screen.dart';
-import 'screens/splash_screen.dart';
 import 'utils/constants.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Load environment variables
   await dotenv.load(fileName: ".env");
-
   runApp(const DermatoLabApp());
 }
 
@@ -48,29 +48,48 @@ class DermatoLabApp extends StatelessWidget {
         child: MaterialApp(
           title: 'DermatoLab',
           debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            useMaterial3: true,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: AppColors.primaryColor,
-              brightness: Brightness.light,
-            ),
-            fontFamily: 'Poppins',
-            scaffoldBackgroundColor: AppColors.backgroundColor,
-            appBarTheme: const AppBarTheme(
-              elevation: 0,
-              centerTitle: true,
-              backgroundColor: AppColors.primaryColor,
-              foregroundColor: Colors.white,
-            ),
-            bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-              selectedItemColor: AppColors.primaryColor,
-              unselectedItemColor: Colors.grey,
-              type: BottomNavigationBarType.fixed,
-              elevation: 8,
-            ),
-          ),
+          // ── Dark theme to match the dashboard's dark color system ──────────
+          theme: _buildTheme(),
+          // ── Start at splash, which auto-navigates to dashboard ────────────
           home: const SplashScreen(),
         ),
+      ),
+    );
+  }
+
+  ThemeData _buildTheme() {
+    const bg = Color(0xFF0F0F14);
+    const surface = Color(0xFF1A1A24);
+    const primary = Color(0xFF6366F1);
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: bg,
+      primaryColor: primary,
+      colorScheme: const ColorScheme.dark(
+        primary: primary,
+        secondary: Color(0xFF8B5CF6),
+        surface: surface,
+        background: bg,
+        onPrimary: Colors.white,
+        onSurface: Color(0xFFF1F1F5),
+        onBackground: Color(0xFFF1F1F5),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: bg,
+        foregroundColor: Color(0xFFF1F1F5),
+        elevation: 0,
+        centerTitle: false,
+      ),
+      cardTheme: CardThemeData(
+        color: surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      textTheme: const TextTheme(
+        bodyMedium: TextStyle(color: Color(0xFF8E8EA8)),
+        bodyLarge: TextStyle(color: Color(0xFFF1F1F5)),
       ),
     );
   }

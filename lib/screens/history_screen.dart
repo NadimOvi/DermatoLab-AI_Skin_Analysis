@@ -51,7 +51,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   Text(
                     AppStrings.startScanning,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: LegacyAppColors.textSecondary,
                     ),
                   ),
                 ],

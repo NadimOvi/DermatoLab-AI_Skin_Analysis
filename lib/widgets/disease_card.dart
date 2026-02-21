@@ -50,7 +50,7 @@ class DiseaseCard extends StatelessWidget {
                     Text(
                       disease.shortDescription,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: LegacyAppColors.textSecondary,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -58,7 +58,10 @@ class DiseaseCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+              const Icon(
+                Icons.chevron_right,
+                color: LegacyAppColors.textSecondary,
+              ),
             ],
           ),
         ),

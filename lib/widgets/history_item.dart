@@ -21,7 +21,7 @@ class HistoryItem extends StatelessWidget {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
-          color: AppColors.errorColor,
+          color: LegacyAppColors.errorColor,
           borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
         ),
         child: const Icon(Icons.delete, color: Colors.white),
@@ -71,7 +71,7 @@ class HistoryItem extends StatelessWidget {
                           'MMM dd, yyyy - HH:mm',
                         ).format(result.timestamp),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: LegacyAppColors.textSecondary,
                         ),
                       ),
                     ],
