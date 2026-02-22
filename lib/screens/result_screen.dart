@@ -1,9 +1,11 @@
 // ============================================================================
-// RESULT SCREEN — Dark indigo theme with redesigned AI + Doctors sections
+// RESULT SCREEN (Updated) — with Severity/Risk Level + Body Part context
 // File: lib/screens/result_screen.dart
 //
-// Add to pubspec.yaml:
-//   google_maps_flutter: ^2.5.0
+// Changes vs original:
+//   1. Accepts optional BodyPart from selector
+//   2. New _RiskLevelCard showing severity badge, gauge, and action guidance
+//   3. Risk level derived from confidence + disease code mapping
 // ============================================================================
 
 import 'dart:io';
@@ -16,7 +18,9 @@ import '../blocs/detection/detection_bloc.dart';
 import '../blocs/history/history_bloc.dart';
 import '../utils/constants.dart';
 import 'doctor_list_screen.dart';
+import 'body_part_screen.dart'; // ← import BodyPart enum
 
+// ── Color palette ─────────────────────────────────────────────────────────────
 class _C {
   static const bg = Color(0xFF0F0F14);
   static const surface = Color(0xFF1A1A24);
@@ -26,6 +30,7 @@ class _C {
   static const green = Color(0xFF10B981);
   static const amber = Color(0xFFF59E0B);
   static const red = Color(0xFFEF4444);
+  static const orange = Color(0xFFF97316);
   static const cyan = Color(0xFF06B6D4);
   static const textHi = Color(0xFFF1F1F5);
   static const textMid = Color(0xFF8E8EA8);
@@ -33,9 +38,168 @@ class _C {
   static const border = Color(0xFF252535);
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// RISK LEVEL MODEL
+// ══════════════════════════════════════════════════════════════════════════════
+enum RiskLevel { low, moderate, high, veryHigh }
+
+extension RiskLevelInfo on RiskLevel {
+  String get label {
+    switch (this) {
+      case RiskLevel.low:
+        return 'Low Risk';
+      case RiskLevel.moderate:
+        return 'Moderate';
+      case RiskLevel.high:
+        return 'High Risk';
+      case RiskLevel.veryHigh:
+        return 'Very High Risk';
+    }
+  }
+
+  String get emoji {
+    switch (this) {
+      case RiskLevel.low:
+        return '🟢';
+      case RiskLevel.moderate:
+        return '🟡';
+      case RiskLevel.high:
+        return '🟠';
+      case RiskLevel.veryHigh:
+        return '🔴';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case RiskLevel.low:
+        return 'This condition is typically benign. Monitor for changes and maintain good skincare habits.';
+      case RiskLevel.moderate:
+        return 'This condition warrants attention. Schedule a dermatologist visit within the next few weeks.';
+      case RiskLevel.high:
+        return 'This condition requires professional evaluation. Book a dermatologist appointment soon.';
+      case RiskLevel.veryHigh:
+        return 'This condition needs urgent medical attention. Please see a dermatologist as soon as possible.';
+    }
+  }
+
+  String get actionLabel {
+    switch (this) {
+      case RiskLevel.low:
+        return 'Monitor & Self-care';
+      case RiskLevel.moderate:
+        return 'Book Appointment';
+      case RiskLevel.high:
+        return 'See Doctor Soon';
+      case RiskLevel.veryHigh:
+        return 'Urgent Consultation';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case RiskLevel.low:
+        return const Color(0xFF10B981);
+      case RiskLevel.moderate:
+        return const Color(0xFFF59E0B);
+      case RiskLevel.high:
+        return const Color(0xFFF97316);
+      case RiskLevel.veryHigh:
+        return const Color(0xFFEF4444);
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case RiskLevel.low:
+        return Icons.check_circle_rounded;
+      case RiskLevel.moderate:
+        return Icons.info_rounded;
+      case RiskLevel.high:
+        return Icons.warning_rounded;
+      case RiskLevel.veryHigh:
+        return Icons.dangerous_rounded;
+    }
+  }
+
+  /// 0.0 – 1.0 for the gauge fill
+  double get gaugeValue {
+    switch (this) {
+      case RiskLevel.low:
+        return 0.18;
+      case RiskLevel.moderate:
+        return 0.45;
+      case RiskLevel.high:
+        return 0.72;
+      case RiskLevel.veryHigh:
+        return 0.96;
+    }
+  }
+}
+
+// ── Map disease codes to a base risk level ────────────────────────────────────
+// Adjust these to your actual disease codes from DiseaseLabels
+class _RiskMapper {
+  /// Returns a RiskLevel based on disease code and model confidence.
+  static RiskLevel compute(String diseaseCode, double confidence) {
+    // Base risk per disease type
+    final baseRisk = _baseRisk(diseaseCode);
+
+    // Modulate by confidence:
+    // Low confidence on a high-risk disease still flags it; high confidence on
+    // a low-risk disease stays low.
+    if (confidence < 0.5) {
+      // Uncertain prediction — cap at moderate regardless
+      if (baseRisk.index > RiskLevel.moderate.index) return RiskLevel.moderate;
+      return baseRisk;
+    }
+    if (confidence >= 0.85) {
+      // Very confident — elevate one step if base is already moderate or above
+      if (baseRisk == RiskLevel.moderate) return RiskLevel.high;
+      if (baseRisk == RiskLevel.high) return RiskLevel.veryHigh;
+    }
+    return baseRisk;
+  }
+
+  static RiskLevel _baseRisk(String code) {
+    // ── Customize these mappings to match your DiseaseLabels ──────────────────
+    const lowRisk = {
+      'df', // Dermatofibroma
+      'nv', // Melanocytic nevi (common moles)
+      'vasc', // Vascular lesions — most benign
+    };
+    const moderateRisk = {
+      'bkl', // Benign keratosis
+      'seb', // Seborrheic keratosis
+      'ak', // Actinic keratosis — pre-cancerous
+    };
+    const highRisk = {
+      'bcc', // Basal cell carcinoma
+      'scc', // Squamous cell carcinoma
+    };
+    const veryHighRisk = {
+      'mel', // Melanoma
+    };
+
+    if (veryHighRisk.contains(code)) return RiskLevel.veryHigh;
+    if (highRisk.contains(code)) return RiskLevel.high;
+    if (moderateRisk.contains(code)) return RiskLevel.moderate;
+    if (lowRisk.contains(code)) return RiskLevel.low;
+    // Default unknown disease to moderate
+    return RiskLevel.moderate;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RESULT SCREEN
+// ══════════════════════════════════════════════════════════════════════════════
 class ResultScreen extends StatefulWidget {
   final DetectionResult result;
-  const ResultScreen({super.key, required this.result});
+
+  /// Optional body part selected before scanning
+  final BodyPart? bodyPart;
+
+  const ResultScreen({super.key, required this.result, this.bodyPart});
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
@@ -46,10 +210,16 @@ class _ResultScreenState extends State<ResultScreen>
   bool _isSaved = false;
   late AnimationController _barController;
   late Animation<double> _barAnimation;
+  late RiskLevel _riskLevel;
 
   @override
   void initState() {
     super.initState();
+    _riskLevel = _RiskMapper.compute(
+      widget.result.diseaseCode,
+      widget.result.confidence,
+    );
+
     _barController = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
@@ -97,12 +267,27 @@ class _ResultScreenState extends State<ResultScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // ── Body part context badge ──────────────────────────────────
+                  if (widget.bodyPart != null) ...[
+                    _buildBodyPartBadge(),
+                    const SizedBox(height: 12),
+                  ],
+
                   _buildResultCard(),
-                  const SizedBox(height: 20),
-                  _buildAISection(),
+                  const SizedBox(height: 16),
+
+                  // ── NEW: Risk Level Card ─────────────────────────────────────
+                  _RiskLevelCard(
+                    riskLevel: _riskLevel,
+                    confidence: widget.result.confidence,
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildActionRow(),
                   const SizedBox(height: 16),
                   _buildFindDoctorsCard(),
                   const SizedBox(height: 28),
+
                   if (widget.result.allPredictions != null) ...[
                     _buildAllPredictions(),
                     const SizedBox(height: 20),
@@ -114,6 +299,37 @@ class _ResultScreenState extends State<ResultScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Body Part badge (shown at top of results if selected) ──────────────────
+  Widget _buildBodyPartBadge() {
+    final bp = widget.bodyPart!;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _C.cyan.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _C.cyan.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.pin_drop_rounded, color: _C.cyan, size: 15),
+          const SizedBox(width: 8),
+          Text(
+            'Scanned area: ',
+            style: const TextStyle(color: _C.textMid, fontSize: 12),
+          ),
+          Text(
+            bp.label,
+            style: const TextStyle(
+              color: _C.cyan,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -204,6 +420,7 @@ class _ResultScreenState extends State<ResultScreen>
               ),
             ),
           ),
+          // Disease label
           Positioned(
             bottom: 14,
             left: 20,
@@ -228,6 +445,34 @@ class _ResultScreenState extends State<ResultScreen>
                     style: TextStyle(
                       color: diseaseColor,
                       fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Risk badge on image (top-right corner)
+          Positioned(
+            top: 14,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _riskLevel.color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _riskLevel.color.withOpacity(0.5)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(_riskLevel.icon, color: _riskLevel.color, size: 12),
+                  const SizedBox(width: 5),
+                  Text(
+                    _riskLevel.label,
+                    style: TextStyle(
+                      color: _riskLevel.color,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -374,19 +619,88 @@ class _ResultScreenState extends State<ResultScreen>
     );
   }
 
-  Widget _buildAISection() {
+  Widget _buildActionRow() {
     return BlocBuilder<DetectionBloc, DetectionState>(
       builder: (context, state) {
-        if (state is AIRecommendationsLoading) return const _AILoadingCard();
-        if (widget.result.aiRecommendations != null) {
-          return _AIRecommendationsCard(text: widget.result.aiRecommendations!);
-        }
-        return _AICallToActionCard(
-          onTap: () => context.read<DetectionBloc>().add(
-            GetAIRecommendationsEvent(widget.result),
+        final hasRecs = widget.result.aiRecommendations != null;
+        final isLoading = state is AIRecommendationsLoading;
+
+        return GestureDetector(
+          onTap: isLoading
+              ? null
+              : () {
+                  if (!hasRecs) {
+                    context.read<DetectionBloc>().add(
+                      GetAIRecommendationsEvent(widget.result),
+                    );
+                  }
+                  _showAISheet(context);
+                },
+          child: Container(
+            height: 56,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF6366F1).withOpacity(0.3),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (isLoading)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                else
+                  const Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                const SizedBox(width: 10),
+                Text(
+                  isLoading
+                      ? 'Analyzing...'
+                      : hasRecs
+                      ? 'View AI Analysis'
+                      : 'Get AI Analysis',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
+    );
+  }
+
+  void _showAISheet(BuildContext ctx) {
+    showModalBottomSheet(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BlocProvider.value(
+        value: ctx.read<DetectionBloc>(),
+        child: _AIBottomSheet(result: widget.result),
+      ),
     );
   }
 
@@ -560,73 +874,267 @@ class _ResultScreenState extends State<ResultScreen>
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// AI CTA card
+// RISK LEVEL CARD
 // ══════════════════════════════════════════════════════════════════════════════
-class _AICallToActionCard extends StatelessWidget {
-  final VoidCallback onTap;
-  const _AICallToActionCard({required this.onTap});
+class _RiskLevelCard extends StatefulWidget {
+  final RiskLevel riskLevel;
+  final double confidence;
+  const _RiskLevelCard({required this.riskLevel, required this.confidence});
+
+  @override
+  State<_RiskLevelCard> createState() => _RiskLevelCardState();
+}
+
+class _RiskLevelCardState extends State<_RiskLevelCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _gaugeAnim;
+  late Animation<double> _fadeAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    _gaugeAnim = Tween<double>(begin: 0, end: widget.riskLevel.gaugeValue)
+        .animate(
+          CurvedAnimation(
+            parent: _ctrl,
+            curve: const Interval(0.1, 0.9, curve: Curves.easeOutCubic),
+          ),
+        );
+    _fadeAnim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.0, 0.4, curve: Curves.easeIn),
+      ),
+    );
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
+    final rl = widget.riskLevel;
+    final color = rl.color;
+
+    return FadeTransition(
+      opacity: _fadeAnim,
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: _C.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _C.primary.withOpacity(0.25)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.auto_awesome_rounded,
-                color: Colors.white,
-                size: 22,
-              ),
+          border: Border.all(color: color.withOpacity(0.25)),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.06),
+              blurRadius: 20,
+              spreadRadius: 2,
             ),
-            const SizedBox(width: 16),
-            const Expanded(
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header row ───────────────────────────────────────────────────
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: color.withOpacity(0.25)),
+                  ),
+                  child: Icon(rl.icon, color: color, size: 22),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Severity Level',
+                        style: TextStyle(color: _C.textMid, fontSize: 12),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        rl.label,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Severity tier dots
+                _SeverityDots(riskLevel: rl),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // ── Gauge bar ────────────────────────────────────────────────────
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Risk Gauge',
+                  style: TextStyle(color: _C.textMid, fontSize: 12),
+                ),
+                const SizedBox(height: 10),
+                Stack(
+                  children: [
+                    // Background track with gradient zones
+                    Container(
+                      height: 14,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(7),
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF10B981), // green
+                            Color(0xFFF59E0B), // amber
+                            Color(0xFFF97316), // orange
+                            Color(0xFFEF4444), // red
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Dark overlay (covers right portion)
+                    AnimatedBuilder(
+                      animation: _gaugeAnim,
+                      builder: (_, __) => FractionallySizedBox(
+                        alignment: Alignment.centerRight,
+                        widthFactor: 1 - _gaugeAnim.value,
+                        child: Container(
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A1A24).withOpacity(0.82),
+                            borderRadius: const BorderRadius.only(
+                              topRight: Radius.circular(7),
+                              bottomRight: Radius.circular(7),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Needle / thumb
+                    AnimatedBuilder(
+                      animation: _gaugeAnim,
+                      builder: (_, __) => Positioned(
+                        left: null,
+                        top: 0,
+                        bottom: 0,
+                        child: FractionallySizedBox(
+                          widthFactor: _gaugeAnim.value,
+                          alignment: Alignment.centerLeft,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Container(
+                              width: 4,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: color.withOpacity(0.6),
+                                    blurRadius: 6,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Zone labels
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: const [
+                    Text(
+                      'Low',
+                      style: TextStyle(color: _C.textLo, fontSize: 10),
+                    ),
+                    Text(
+                      'Moderate',
+                      style: TextStyle(color: _C.textLo, fontSize: 10),
+                    ),
+                    Text(
+                      'High',
+                      style: TextStyle(color: _C.textLo, fontSize: 10),
+                    ),
+                    Text(
+                      'Very High',
+                      style: TextStyle(color: _C.textLo, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 18),
+            // ── Description ──────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withOpacity(0.15)),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Get AI Recommendations',
+                    rl.description,
                     style: TextStyle(
-                      color: _C.textHi,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      color: _C.textMid,
+                      fontSize: 13,
+                      height: 1.55,
                     ),
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Personalised care tips for your condition',
-                    style: TextStyle(color: _C.textMid, fontSize: 12),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.recommend_rounded, color: color, size: 14),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Recommended: ${rl.actionLabel}',
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: _C.primary.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.arrow_forward_rounded,
-                color: _C.primary,
-                size: 18,
               ),
             ),
           ],
@@ -636,350 +1144,168 @@ class _AICallToActionCard extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// AI Loading card — shimmer skeleton
-// ══════════════════════════════════════════════════════════════════════════════
-class _AILoadingCard extends StatefulWidget {
-  const _AILoadingCard();
-
-  @override
-  State<_AILoadingCard> createState() => _AILoadingCardState();
-}
-
-class _AILoadingCardState extends State<_AILoadingCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _shimmerController;
-
-  @override
-  void initState() {
-    super.initState();
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _shimmerController.dispose();
-    super.dispose();
-  }
+// ── Severity dot row (4 dots, filled up to current level) ────────────────────
+class _SeverityDots extends StatelessWidget {
+  final RiskLevel riskLevel;
+  const _SeverityDots({required this.riskLevel});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _C.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _C.primary.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: _C.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: _C.primary,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Generating recommendations...',
-                style: TextStyle(
-                  color: _C.textHi,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: _C.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          ...[1.0, 0.75, 0.88, 0.6].map(
-            (w) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: AnimatedBuilder(
-                animation: _shimmerController,
-                builder: (_, __) => FractionallySizedBox(
-                  widthFactor: w,
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    height: 11,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      gradient: LinearGradient(
-                        begin: Alignment(
-                          -1.5 + _shimmerController.value * 3,
-                          0,
-                        ),
-                        end: Alignment(-0.5 + _shimmerController.value * 3, 0),
-                        colors: const [
-                          Color(0xFF22222F),
-                          Color(0xFF30304A),
-                          Color(0xFF22222F),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+    final levels = RiskLevel.values;
+    return Row(
+      children: levels.map((lvl) {
+        final filled = lvl.index <= riskLevel.index;
+        return Container(
+          margin: const EdgeInsets.only(left: 5),
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: filled ? lvl.color : _C.surfaceAlt,
+            border: Border.all(
+              color: filled ? lvl.color.withOpacity(0.5) : _C.border,
             ),
           ),
-        ],
-      ),
+        );
+      }).toList(),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// AI Recommendations — natural flowing prose with icon-tagged sections
+// AI BOTTOM SHEET — unchanged from original but included for completeness
 // ══════════════════════════════════════════════════════════════════════════════
-class _AIRecommendationsCard extends StatelessWidget {
-  final String text;
-  const _AIRecommendationsCard({required this.text});
-
-  static const _sectionIcons = [
-    Icons.healing_rounded,
-    Icons.medication_rounded,
-    Icons.wb_sunny_rounded,
-    Icons.no_food_rounded,
-    Icons.schedule_rounded,
-    Icons.local_hospital_rounded,
-  ];
-
-  /// Merges bullet/numbered lines into clean prose sections.
-  /// If a line ends with ':' and is short → treat as a section heading.
-  /// All other lines are merged into a single paragraph per section.
-  List<_Section> _parse(String raw) {
-    final sections = <_Section>[];
-    String? title;
-    final body = StringBuffer();
-
-    void flush() {
-      if (body.isNotEmpty) {
-        sections.add(_Section(title: title, body: body.toString().trim()));
-        body.clear();
-        title = null;
-      }
-    }
-
-    for (final rawLine in raw.split('\n')) {
-      final line = rawLine.trim();
-      if (line.isEmpty) continue;
-
-      // Detect heading: short, ends with ':'
-      if (line.endsWith(':') && line.length < 70) {
-        flush();
-        title = line.replaceAll(':', '').trim();
-        continue;
-      }
-
-      // Strip list prefixes (1. / - / • / *) and append to prose buffer
-      final clean = line.replaceAll(RegExp(r'^[\d\.\-\*•►▸]+\s*'), '').trim();
-      if (clean.isNotEmpty) {
-        if (body.isNotEmpty) body.write(' ');
-        body.write(clean);
-      }
-    }
-    flush();
-
-    if (sections.isEmpty) sections.add(_Section(title: null, body: raw.trim()));
-    return sections;
-  }
+class _AIBottomSheet extends StatelessWidget {
+  final DetectionResult result;
+  const _AIBottomSheet({required this.result});
 
   @override
   Widget build(BuildContext context) {
-    final sections = _parse(text);
+    final screenH = MediaQuery.of(context).size.height;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Container(
-      decoration: BoxDecoration(
-        color: _C.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _C.primary.withOpacity(0.2)),
+      height: screenH * 0.88,
+      decoration: const BoxDecoration(
+        color: Color(0xFF13131E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header ──────────────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+            padding: const EdgeInsets.only(top: 12, bottom: 8),
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF3A3A55),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
             child: Row(
               children: [
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 42,
+                  height: 42,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(11),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
                     Icons.auto_awesome_rounded,
                     color: Colors.white,
-                    size: 18,
+                    size: 20,
                   ),
                 ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'AI Recommendations',
-                    style: TextStyle(
-                      color: _C.textHi,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'AI Analysis',
+                        style: TextStyle(
+                          color: Color(0xFFF1F1F5),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        result.diseaseName,
+                        style: const TextStyle(
+                          color: Color(0xFF8E8EA8),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A24),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF252535)),
                     ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _C.primary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _C.primary.withOpacity(0.2)),
-                  ),
-                  child: const Text(
-                    'AI',
-                    style: TextStyle(
-                      color: _C.primary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFF8E8EA8),
+                      size: 16,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-
-          const SizedBox(height: 14),
-          Divider(height: 1, color: _C.border),
           const SizedBox(height: 16),
-
-          // ── Sections — icon + title + prose ─────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: sections.asMap().entries.map((e) {
-                final i = e.key;
-                final sec = e.value;
-                final isLast = i == sections.length - 1;
-                final icon = _sectionIcons[i % _sectionIcons.length];
-
-                return IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Icon + vertical line
-                      Column(
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: _C.surfaceAlt,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: _C.border),
-                            ),
-                            child: Icon(icon, color: _C.primary, size: 15),
-                          ),
-                          if (!isLast)
-                            Expanded(
-                              child: Container(
-                                width: 1.5,
-                                margin: const EdgeInsets.symmetric(vertical: 4),
-                                color: _C.border,
-                              ),
-                            ),
-                        ],
-                      ),
-
-                      const SizedBox(width: 12),
-
-                      // Text block
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(bottom: isLast ? 0 : 18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (sec.title != null) ...[
-                                Text(
-                                  sec.title!,
-                                  style: const TextStyle(
-                                    color: _C.textHi,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    height: 1.3,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                              ],
-                              Text(
-                                sec.body,
-                                style: const TextStyle(
-                                  color: _C.textMid,
-                                  fontSize: 13,
-                                  height: 1.65,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+          Divider(height: 1, color: const Color(0xFF252535)),
+          Expanded(
+            child: BlocBuilder<DetectionBloc, DetectionState>(
+              builder: (context, state) {
+                if (state is AIRecommendationsLoading)
+                  return const _AISheetLoading();
+                if (result.aiRecommendations != null) {
+                  return _AISheetContent(text: result.aiRecommendations!);
+                }
+                return const _AISheetLoading();
+              },
             ),
           ),
-
-          const SizedBox(height: 14),
-
-          // ── Footer disclaimer ────────────────────────────────────────────────
           Container(
-            margin: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            margin: EdgeInsets.fromLTRB(20, 0, 20, bottomPad + 16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: _C.amber.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _C.amber.withOpacity(0.15)),
+              color: const Color(0xFFF59E0B).withOpacity(0.07),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFF59E0B).withOpacity(0.18),
+              ),
             ),
             child: Row(
               children: const [
-                Icon(Icons.info_outline_rounded, color: _C.amber, size: 13),
-                SizedBox(width: 7),
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: Color(0xFFF59E0B),
+                  size: 14,
+                ),
+                SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'For reference only — consult a doctor for treatment.',
+                    'AI suggestions are for reference only. Always consult a qualified dermatologist.',
                     style: TextStyle(
-                      color: _C.amber,
+                      color: Color(0xFFF59E0B),
                       fontSize: 11,
+                      height: 1.5,
                       fontStyle: FontStyle.italic,
                     ),
                   ),
@@ -993,14 +1319,236 @@ class _AIRecommendationsCard extends StatelessWidget {
   }
 }
 
-class _Section {
-  final String? title;
-  final String body;
-  const _Section({required this.title, required this.body});
+// ── AI loading shimmer ────────────────────────────────────────────────────────
+class _AISheetLoading extends StatefulWidget {
+  const _AISheetLoading();
+  @override
+  State<_AISheetLoading> createState() => _AISheetLoadingState();
+}
+
+class _AISheetLoadingState extends State<_AISheetLoading>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Widget _shimmerBar(double widthFactor) => AnimatedBuilder(
+    animation: _ctrl,
+    builder: (_, __) => FractionallySizedBox(
+      widthFactor: widthFactor,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        height: 12,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          gradient: LinearGradient(
+            begin: Alignment(-1.5 + _ctrl.value * 3, 0),
+            end: Alignment(-0.5 + _ctrl.value * 3, 0),
+            colors: const [
+              Color(0xFF1E1E2E),
+              Color(0xFF2E2E45),
+              Color(0xFF1E1E2E),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFF6366F1),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Generating your personalised recommendations...',
+              style: TextStyle(color: Color(0xFF8E8EA8), fontSize: 13),
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        ...[1.0, 0.8, 0.92, 0.65, 1.0, 0.75, 0.88, 0.55, 0.9, 0.7].map(
+          (w) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _shimmerBar(w),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// ── AI content ────────────────────────────────────────────────────────────────
+class _AISheetContent extends StatelessWidget {
+  final String text;
+  const _AISheetContent({required this.text});
+
+  static const _icons = [
+    (Icons.healing_rounded, Color(0xFF6366F1)),
+    (Icons.medication_rounded, Color(0xFF06B6D4)),
+    (Icons.wb_sunny_rounded, Color(0xFFF59E0B)),
+    (Icons.no_food_rounded, Color(0xFF10B981)),
+    (Icons.schedule_rounded, Color(0xFF8B5CF6)),
+    (Icons.local_hospital_rounded, Color(0xFFEF4444)),
+  ];
+
+  List<({String? title, String body})> _parse(String raw) {
+    final out = <({String? title, String body})>[];
+    String? title;
+    final buf = StringBuffer();
+
+    void flush() {
+      final b = buf.toString().trim();
+      if (b.isNotEmpty) {
+        out.add((title: title, body: b));
+        buf.clear();
+        title = null;
+      }
+    }
+
+    for (final rawLine in raw.split('\n')) {
+      final line = rawLine.trim();
+      if (line.isEmpty) {
+        flush();
+        continue;
+      }
+      if (line.endsWith(':') && line.length < 70) {
+        flush();
+        title = line.replaceAll(RegExp(r'[:\*\_#]+'), '').trim();
+        continue;
+      }
+      final clean = line
+          .replaceAll(RegExp(r'^#+\s*'), '')
+          .replaceAll(RegExp(r'^[\d\.\-\*•►▸]+\s*'), '')
+          .replaceAll(RegExp(r'\*\*(.+?)\*\*'), r'\1')
+          .trim();
+      if (clean.isNotEmpty) {
+        if (buf.isNotEmpty) buf.write(' ');
+        buf.write(clean);
+      }
+    }
+    flush();
+    if (out.isEmpty) out.add((title: null, body: raw.trim()));
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sections = _parse(text);
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+      itemCount: sections.length,
+      itemBuilder: (context, i) {
+        final sec = sections[i];
+        final (icon, color) = _icons[i % _icons.length];
+        final isLast = i == sections.length - 1;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(color: color.withOpacity(0.2)),
+                      ),
+                      child: Icon(icon, color: color, size: 16),
+                    ),
+                    if (!isLast)
+                      Expanded(
+                        child: Container(
+                          width: 1.5,
+                          margin: const EdgeInsets.symmetric(vertical: 5),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                color.withOpacity(0.3),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: isLast ? 0 : 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (sec.title != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            sec.title!,
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                        ] else
+                          const SizedBox(height: 4),
+                        Text(
+                          sec.body,
+                          style: const TextStyle(
+                            color: Color(0xFFAAAAAC),
+                            fontSize: 13.5,
+                            height: 1.7,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Find Doctors — real Google Map on right, info panel on left
+// Find Doctors Map Card (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 class _FindDoctorsMapCard extends StatefulWidget {
   final VoidCallback onTap;
@@ -1017,7 +1565,6 @@ class _FindDoctorsMapCardState extends State<_FindDoctorsMapCard>
   late Animation<double> _pulseAnim;
 
   static const _center = LatLng(23.8103, 90.4125);
-
   final _markers = <Marker>{
     const Marker(
       markerId: MarkerId('you'),
@@ -1067,7 +1614,6 @@ class _FindDoctorsMapCardState extends State<_FindDoctorsMapCard>
           borderRadius: BorderRadius.circular(20),
           child: Row(
             children: [
-              // ── Left: info panel ─────────────────────────────────────────────
               Expanded(
                 flex: 52,
                 child: Padding(
@@ -1076,7 +1622,6 @@ class _FindDoctorsMapCardState extends State<_FindDoctorsMapCard>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Icon + title
                       Row(
                         children: [
                           AnimatedBuilder(
@@ -1117,8 +1662,6 @@ class _FindDoctorsMapCardState extends State<_FindDoctorsMapCard>
                           ),
                         ],
                       ),
-
-                      // Subtitle
                       const Text(
                         'Nearby dermatologists\n& skin specialists',
                         style: TextStyle(
@@ -1127,8 +1670,6 @@ class _FindDoctorsMapCardState extends State<_FindDoctorsMapCard>
                           height: 1.5,
                         ),
                       ),
-
-                      // CTA pill
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 11,
@@ -1163,14 +1704,10 @@ class _FindDoctorsMapCardState extends State<_FindDoctorsMapCard>
                   ),
                 ),
               ),
-
-              // ── Right: Google Map ─────────────────────────────────────────────
               Expanded(
                 flex: 48,
                 child: Stack(
                   children: [
-                    // The real map — LayoutBuilder gives AndroidView a concrete
-                    // size before rendering, preventing the setSize crash on Android.
                     LayoutBuilder(
                       builder: (context, constraints) => GoogleMap(
                         initialCameraPosition: const CameraPosition(
@@ -1193,8 +1730,6 @@ class _FindDoctorsMapCardState extends State<_FindDoctorsMapCard>
                         liteModeEnabled: true,
                       ),
                     ),
-
-                    // Left fade so map blends cleanly into panel
                     Positioned(
                       left: 0,
                       top: 0,
@@ -1210,8 +1745,6 @@ class _FindDoctorsMapCardState extends State<_FindDoctorsMapCard>
                         ),
                       ),
                     ),
-
-                    // Intercept taps so the card action fires (not the map)
                     Positioned.fill(
                       child: GestureDetector(
                         onTap: widget.onTap,
@@ -1230,7 +1763,6 @@ class _FindDoctorsMapCardState extends State<_FindDoctorsMapCard>
   }
 }
 
-// ── Dark Google Map style ─────────────────────────────────────────────────────
 const _kDarkMapStyle = '''
 [
   {"elementType":"geometry","stylers":[{"color":"#0f0f14"}]},

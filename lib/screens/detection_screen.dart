@@ -1,14 +1,13 @@
 // ============================================================================
-// DETECTION SCREEN — Real custom camera with live viewfinder + scan overlay
+// DETECTION SCREEN (Fixed) — passes BodyPart through to ResultScreen
 // File: lib/screens/detection_screen.dart
 //
-// Add to pubspec.yaml:
-//   camera: ^0.10.5+9
-//   path_provider: ^2.1.2
-//   path: ^1.9.0
+// FIX 1: Constructor now accepts optional BodyPart parameter
+// FIX 2: ResultScreen navigation includes bodyPart
 // ============================================================================
 
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +18,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../blocs/detection/detection_bloc.dart';
 import 'result_screen.dart';
+import 'body_part_screen.dart'; // ← import BodyPart
 
 class _C {
   static const bg = Color(0xFF0F0F14);
@@ -34,14 +34,17 @@ class _C {
 }
 
 class DetectionScreen extends StatefulWidget {
-  const DetectionScreen({super.key});
+  // ✅ FIX 1: Accept the selected body part
+  final BodyPart? bodyPart;
+
+  const DetectionScreen({super.key, this.bodyPart});
+
   @override
   State<DetectionScreen> createState() => _DetectionScreenState();
 }
 
 class _DetectionScreenState extends State<DetectionScreen>
     with TickerProviderStateMixin {
-  // ── Camera state ───────────────────────────────────────────────────────────
   CameraController? _cameraCtrl;
   List<CameraDescription> _cameras = [];
   bool _cameraReady = false;
@@ -52,14 +55,14 @@ class _DetectionScreenState extends State<DetectionScreen>
   bool _flashOn = false;
   bool _isCapturing = false;
 
-  // ── Tap-to-focus ───────────────────────────────────────────────────────────
   Offset? _focusTapPos;
   bool _showFocusRing = false;
 
-  // ── Distance state 0=far 1=good 2=close ────────────────────────────────────
   int _distanceState = 1;
+  bool _isBlurry = false;
+  bool _streamBusy = false;
+  int _frameSkip = 0;
 
-  // ── Animations ─────────────────────────────────────────────────────────────
   late AnimationController _scanCtrl;
   late AnimationController _pulseCtrl;
   late AnimationController _dotCtrl;
@@ -157,11 +160,13 @@ class _DetectionScreenState extends State<DetectionScreen>
       await ctrl.initialize();
       _minZoom = await ctrl.getMinZoomLevel();
       _maxZoom = await ctrl.getMaxZoomLevel();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _cameraCtrl = ctrl;
           _cameraReady = true;
         });
+        ctrl.startImageStream(_onCameraFrame);
+      }
     } catch (e) {
       debugPrint('Camera start error: $e');
     }
@@ -205,6 +210,7 @@ class _DetectionScreenState extends State<DetectionScreen>
     setState(() => _isCapturing = true);
     _flashCtrl.forward(from: 0).then((_) => _flashCtrl.reverse());
     try {
+      await _cameraCtrl!.stopImageStream().catchError((_) {});
       final XFile photo = await _cameraCtrl!.takePicture();
       final dir = await getTemporaryDirectory();
       final path = p.join(
@@ -212,8 +218,9 @@ class _DetectionScreenState extends State<DetectionScreen>
         '${DateTime.now().millisecondsSinceEpoch}.jpg',
       );
       await File(photo.path).copy(path);
-      if (mounted)
+      if (mounted) {
         context.read<DetectionBloc>().add(DetectDiseaseEvent(File(path)));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -228,7 +235,10 @@ class _DetectionScreenState extends State<DetectionScreen>
         );
       }
     } finally {
-      if (mounted) setState(() => _isCapturing = false);
+      if (mounted) {
+        setState(() => _isCapturing = false);
+        _cameraCtrl?.startImageStream(_onCameraFrame).catchError((_) {});
+      }
     }
   }
 
@@ -244,8 +254,80 @@ class _DetectionScreenState extends State<DetectionScreen>
     }
   }
 
+  void _onCameraFrame(CameraImage image) {
+    _frameSkip++;
+    if (_frameSkip % 15 != 0) return;
+    if (_streamBusy) return;
+    _streamBusy = true;
+    try {
+      final Uint8List yBytes = image.planes[0].bytes;
+      final int w = image.width;
+      final int h = image.height;
+      final double blur = _laplacianVariance(yBytes, w, h);
+      final int distance = _estimateDistance(yBytes, w, h);
+      if (mounted) {
+        setState(() {
+          _isBlurry = blur < 20.0;
+          _distanceState = distance;
+        });
+      }
+    } catch (_) {
+    } finally {
+      _streamBusy = false;
+    }
+  }
+
+  double _laplacianVariance(Uint8List y, int w, int h) {
+    final int x0 = w ~/ 3, x1 = w * 2 ~/ 3;
+    final int y0 = h ~/ 3, y1 = h * 2 ~/ 3;
+    double sum = 0, sumSq = 0;
+    int n = 0;
+    for (int row = y0 + 1; row < y1 - 1; row += 5) {
+      for (int col = x0 + 1; col < x1 - 1; col += 5) {
+        final int idx = row * w + col;
+        final double lap =
+            y[idx] * 4.0 - y[idx - 1] - y[idx + 1] - y[idx - w] - y[idx + w];
+        sum += lap;
+        sumSq += lap * lap;
+        n++;
+      }
+    }
+    if (n == 0) return 100.0;
+    final double mean = sum / n;
+    return (sumSq / n) - mean * mean;
+  }
+
+  int _estimateDistance(Uint8List y, int w, int h) {
+    final int cx0 = (w * 0.3).toInt(), cx1 = (w * 0.7).toInt();
+    final int cy0 = (h * 0.3).toInt(), cy1 = (h * 0.7).toInt();
+    double cSum = 0;
+    int cN = 0;
+    for (int row = cy0; row < cy1; row += 8) {
+      for (int col = cx0; col < cx1; col += 8) {
+        cSum += y[row * w + col];
+        cN++;
+      }
+    }
+    final double centreAvg = cN > 0 ? cSum / cN : 128;
+    double bSum = 0;
+    int bN = 0;
+    final int borderRows = (h * 0.08).toInt();
+    for (int row = 0; row < borderRows; row += 4) {
+      for (int col = 0; col < w; col += 8) {
+        bSum += y[row * w + col];
+        bN++;
+      }
+    }
+    final double borderAvg = bN > 0 ? bSum / bN : 128;
+    final double diff = (centreAvg - borderAvg).abs();
+    if (diff < 12 && centreAvg > 140) return 2;
+    if (diff > 55 || centreAvg < 60) return 0;
+    return 1;
+  }
+
   @override
   void dispose() {
+    _cameraCtrl?.stopImageStream().catchError((_) {});
     _cameraCtrl?.dispose();
     for (final c in [
       _scanCtrl,
@@ -260,7 +342,6 @@ class _DetectionScreenState extends State<DetectionScreen>
     super.dispose();
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -272,10 +353,15 @@ class _DetectionScreenState extends State<DetectionScreen>
             final result = state is DetectionSuccess
                 ? state.result
                 : (state as DetectionWithAIRecommendations).result;
+
             Navigator.pushReplacement(
               context,
               PageRouteBuilder(
-                pageBuilder: (_, a, __) => ResultScreen(result: result),
+                // ✅ FIX 2: Pass widget.bodyPart to ResultScreen
+                pageBuilder: (_, a, __) => ResultScreen(
+                  result: result,
+                  bodyPart: widget.bodyPart, // ← THIS was missing before
+                ),
                 transitionDuration: const Duration(milliseconds: 300),
                 transitionsBuilder: (_, anim, __, child) =>
                     FadeTransition(opacity: anim, child: child),
@@ -302,25 +388,15 @@ class _DetectionScreenState extends State<DetectionScreen>
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // FULL CAMERA SCREEN
-  // ══════════════════════════════════════════════════════════════════════════
   Widget _buildCamera() {
     final top = MediaQuery.of(context).padding.top;
     final bottom = MediaQuery.of(context).padding.bottom;
 
     return Stack(
       children: [
-        // ── 1. Live viewfinder (fills screen) ──────────────────────────────
         Positioned.fill(child: _buildPreview()),
-
-        // ── 2. Vignette ─────────────────────────────────────────────────────
         Positioned.fill(child: _Vignette()),
-
-        // ── 3. Scan frame (brackets + line + crosshair + dots) ──────────────
         Positioned.fill(child: _buildScanFrame()),
-
-        // ── 4. Focus ring ───────────────────────────────────────────────────
         if (_showFocusRing && _focusTapPos != null)
           Positioned(
             left: _focusTapPos!.dx - 30,
@@ -350,8 +426,6 @@ class _DetectionScreenState extends State<DetectionScreen>
               ),
             ),
           ),
-
-        // ── 5. White capture flash ───────────────────────────────────────────
         AnimatedBuilder(
           animation: _flashAnim,
           builder: (_, __) => IgnorePointer(
@@ -361,38 +435,69 @@ class _DetectionScreenState extends State<DetectionScreen>
             ),
           ),
         ),
-
-        // ── 6. Top bar ───────────────────────────────────────────────────────
         Positioned(top: top + 8, left: 16, right: 16, child: _buildTopBar()),
-
-        // ── 7. Distance chip ────────────────────────────────────────────────
         Positioned(
           bottom: bottom + 165,
           left: 0,
           right: 0,
           child: Center(child: _buildDistanceChip()),
         ),
-
-        // ── 8. Zoom row ─────────────────────────────────────────────────────
         Positioned(
           bottom: bottom + 125,
           left: 48,
           right: 48,
           child: _buildZoomRow(),
         ),
-
-        // ── 9. Bottom controls ───────────────────────────────────────────────
         Positioned(
           bottom: bottom + 28,
           left: 0,
           right: 0,
           child: _buildBottomControls(),
         ),
+
+        // ✅ FIX 3: Show selected body part badge on camera screen
+        if (widget.bodyPart != null)
+          Positioned(
+            top: top + 60,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: _C.cyan.withOpacity(0.5)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.pin_drop_rounded,
+                      color: _C.cyan,
+                      size: 13,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      widget.bodyPart!.label,
+                      style: const TextStyle(
+                        color: _C.cyan,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
 
-  // ── Live preview ───────────────────────────────────────────────────────────
   Widget _buildPreview() {
     if (!_cameraReady || _cameraCtrl == null) {
       return Container(
@@ -439,7 +544,6 @@ class _DetectionScreenState extends State<DetectionScreen>
     );
   }
 
-  // ── Scan frame overlay ─────────────────────────────────────────────────────
   Widget _buildScanFrame() {
     return LayoutBuilder(
       builder: (context, box) {
@@ -450,13 +554,10 @@ class _DetectionScreenState extends State<DetectionScreen>
 
         return Stack(
           children: [
-            // Dark mask outside frame
             ClipPath(
               clipper: _MaskClipper(frameRect: frameRect, radius: 20),
               child: Container(color: Colors.black.withOpacity(0.5)),
             ),
-
-            // Scan sweep line
             Positioned(
               left: left,
               top: top,
@@ -471,8 +572,6 @@ class _DetectionScreenState extends State<DetectionScreen>
                 ),
               ),
             ),
-
-            // Dot grid
             Positioned(
               left: left,
               top: top,
@@ -483,8 +582,6 @@ class _DetectionScreenState extends State<DetectionScreen>
                 child: CustomPaint(painter: _DotGridPainter()),
               ),
             ),
-
-            // Corner brackets (pulsing)
             Positioned(
               left: left,
               top: top,
@@ -498,8 +595,6 @@ class _DetectionScreenState extends State<DetectionScreen>
                 ),
               ),
             ),
-
-            // Rotating dashed ring
             Positioned(
               left: left,
               top: top,
@@ -511,8 +606,6 @@ class _DetectionScreenState extends State<DetectionScreen>
                     CustomPaint(painter: _RingPainter(_ringAnim.value)),
               ),
             ),
-
-            // Centre crosshair
             Positioned(
               left: left,
               top: top,
@@ -525,17 +618,6 @@ class _DetectionScreenState extends State<DetectionScreen>
                 ),
               ),
             ),
-
-            // 8-point scan marks
-            Positioned(
-              left: left,
-              top: top,
-              width: frameSize,
-              height: frameSize,
-              child: _MarkGrid(size: frameSize),
-            ),
-
-            // Frame label below scan box
             Positioned(
               left: left,
               top: top + frameSize + 14,
@@ -562,8 +644,6 @@ class _DetectionScreenState extends State<DetectionScreen>
                 ),
               ),
             ),
-
-            // Top-left badge
             Positioned(
               left: left + 10,
               top: top + 10,
@@ -573,7 +653,6 @@ class _DetectionScreenState extends State<DetectionScreen>
                 color: _C.cyan,
               ),
             ),
-            // Top-right badge
             Positioned(
               right: box.maxWidth - left - frameSize + 10,
               top: top + 10,
@@ -589,7 +668,6 @@ class _DetectionScreenState extends State<DetectionScreen>
     );
   }
 
-  // ── Top bar ────────────────────────────────────────────────────────────────
   Widget _buildTopBar() {
     return Row(
       children: [
@@ -619,7 +697,6 @@ class _DetectionScreenState extends State<DetectionScreen>
     );
   }
 
-  // ── Distance chip ──────────────────────────────────────────────────────────
   Widget _buildDistanceChip() {
     const cfg = [
       (_C.red, Icons.zoom_out_rounded, 'Too Far — move closer'),
@@ -627,58 +704,51 @@ class _DetectionScreenState extends State<DetectionScreen>
       (_C.amber, Icons.zoom_in_rounded, 'Too Close — move back'),
     ];
     final (color, icon, label) = cfg[_distanceState];
-
-    return GestureDetector(
-      // tap to cycle for demo; in production replace with real depth sensor
-      onTap: () => setState(() => _distanceState = (_distanceState + 1) % 3),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: color.withOpacity(0.5)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 15),
-            const SizedBox(width: 7),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 15),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
             ),
-            const SizedBox(width: 8),
-            // mini ruler
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(3, (i) {
-                const barColors = [_C.amber, _C.green, _C.red];
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  width: i == _distanceState ? 18 : 8,
-                  height: 4,
-                  margin: const EdgeInsets.only(left: 2),
-                  decoration: BoxDecoration(
-                    color: i == _distanceState
-                        ? barColors[i]
-                        : barColors[i].withOpacity(0.25),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                );
-              }),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              const barColors = [_C.amber, _C.green, _C.red];
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                width: i == _distanceState ? 18 : 8,
+                height: 4,
+                margin: const EdgeInsets.only(left: 2),
+                decoration: BoxDecoration(
+                  color: i == _distanceState
+                      ? barColors[i]
+                      : barColors[i].withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              );
+            }),
+          ),
+        ],
       ),
     );
   }
 
-  // ── Zoom row ───────────────────────────────────────────────────────────────
   Widget _buildZoomRow() {
     return Row(
       children: [
@@ -722,12 +792,10 @@ class _DetectionScreenState extends State<DetectionScreen>
     );
   }
 
-  // ── Bottom controls ────────────────────────────────────────────────────────
   Widget _buildBottomControls() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        // Gallery
         GestureDetector(
           onTap: _pickGallery,
           child: Container(
@@ -745,14 +813,10 @@ class _DetectionScreenState extends State<DetectionScreen>
             ),
           ),
         ),
-
-        // Shutter
         GestureDetector(
           onTap: _isCapturing ? null : _capture,
           child: _ShutterBtn(isCapturing: _isCapturing),
         ),
-
-        // Tips
         GestureDetector(
           onTap: () => showModalBottomSheet(
             context: context,
@@ -781,9 +845,6 @@ class _DetectionScreenState extends State<DetectionScreen>
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ANALYZING STATE
-  // ══════════════════════════════════════════════════════════════════════════
   Widget _buildAnalyzing() {
     return Container(
       color: _C.bg,
@@ -857,13 +918,27 @@ class _DetectionScreenState extends State<DetectionScreen>
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// CLIP PATH — punches scan window out of dark mask
+// UPDATE BodyPartSelectorScreen.onConfirm to navigate to DetectionScreen:
+//
+//   BodyPartSelectorScreen(
+//     onConfirm: (part, fromGallery) {
+//       if (fromGallery) {
+//         // pick from gallery and run detection directly
+//       } else {
+//         Navigator.push(context, MaterialPageRoute(
+//           builder: (_) => DetectionScreen(bodyPart: part), // ← pass it here
+//         ));
+//       }
+//     },
+//   )
 // ══════════════════════════════════════════════════════════════════════════════
+
+// ─── Painters & helpers (unchanged from original) ────────────────────────────
+
 class _MaskClipper extends CustomClipper<Path> {
   final Rect frameRect;
   final double radius;
   _MaskClipper({required this.frameRect, required this.radius});
-
   @override
   Path getClip(Size size) {
     final outer = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
@@ -876,32 +951,23 @@ class _MaskClipper extends CustomClipper<Path> {
   bool shouldReclip(_MaskClipper old) => old.frameRect != frameRect;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// VIGNETTE
-// ══════════════════════════════════════════════════════════════════════════════
 class _Vignette extends StatelessWidget {
   @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment.center,
-          radius: 1.0,
-          colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
-          stops: const [0.5, 1.0],
-        ),
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: RadialGradient(
+        center: Alignment.center,
+        radius: 1.0,
+        colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+        stops: const [0.5, 1.0],
       ),
-    );
-  }
+    ),
+  );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// PAINTERS
-// ══════════════════════════════════════════════════════════════════════════════
 class _ScanLinePainter extends CustomPainter {
   final double t;
   _ScanLinePainter(this.t);
-
   @override
   void paint(Canvas canvas, Size size) {
     final y = size.height * t;
@@ -939,11 +1005,9 @@ class _DotGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()..color = const Color(0xFF6366F1).withOpacity(0.08);
-    for (double x = 22; x < size.width; x += 22) {
-      for (double y = 22; y < size.height; y += 22) {
+    for (double x = 22; x < size.width; x += 22)
+      for (double y = 22; y < size.height; y += 22)
         canvas.drawCircle(Offset(x, y), 1.1, p);
-      }
-    }
   }
 
   @override
@@ -954,13 +1018,11 @@ class _CornerPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = _C.primary
+      ..color = const Color(0xFF6366F1)
       ..strokeWidth = 2.8
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
-
     const len = 26.0, r = 8.0, pad = 0.0;
-
     void corner(double x, double y, double dx, double dy) {
       final path = Path()
         ..moveTo(x + dx * len, y)
@@ -987,7 +1049,6 @@ class _CornerPainter extends CustomPainter {
 class _RingPainter extends CustomPainter {
   final double angle;
   _RingPainter(this.angle);
-
   @override
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
@@ -1020,12 +1081,11 @@ class _RingPainter extends CustomPainter {
 class _CrosshairPainter extends CustomPainter {
   final double opacity;
   _CrosshairPainter({required this.opacity});
-
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2, cy = size.height / 2;
     final p = Paint()
-      ..color = _C.cyan.withOpacity(opacity * 0.9)
+      ..color = const Color(0xFF06B6D4).withOpacity(opacity * 0.9)
       ..strokeWidth = 1.3
       ..strokeCap = StrokeCap.round;
     const arm = 18.0, gap = 7.0;
@@ -1036,13 +1096,13 @@ class _CrosshairPainter extends CustomPainter {
     canvas.drawCircle(
       Offset(cx, cy),
       3,
-      Paint()..color = _C.cyan.withOpacity(opacity),
+      Paint()..color = const Color(0xFF06B6D4).withOpacity(opacity),
     );
     canvas.drawCircle(
       Offset(cx, cy),
       12,
       Paint()
-        ..color = _C.cyan.withOpacity(opacity * 0.3)
+        ..color = const Color(0xFF06B6D4).withOpacity(opacity * 0.3)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1,
     );
@@ -1052,95 +1112,15 @@ class _CrosshairPainter extends CustomPainter {
   bool shouldRepaint(_CrosshairPainter o) => o.opacity != opacity;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// MARK POINT GRID — 8 pulsing + scan dots
-// ══════════════════════════════════════════════════════════════════════════════
-class _MarkGrid extends StatefulWidget {
-  final double size;
-  const _MarkGrid({required this.size});
-  @override
-  State<_MarkGrid> createState() => _MarkGridState();
-}
-
-class _MarkGridState extends State<_MarkGrid>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final pts = <Offset>[];
-    for (int r = 0; r < 3; r++)
-      for (int c = 0; c < 3; c++) {
-        if (r == 1 && c == 1) continue;
-        pts.add(Offset((c + 1) / 4, (r + 1) / 4));
-      }
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (_, __) => Stack(
-        children: pts.asMap().entries.map((e) {
-          final t = ((_ctrl.value * pts.length) - e.key) % 1.0;
-          final op = (t < 0.5 ? t * 2.0 : (1.0 - t) * 2.0).clamp(0.1, 0.75);
-          return Positioned(
-            left: e.value.dx * widget.size - 5,
-            top: e.value.dy * widget.size - 5,
-            child: Opacity(
-              opacity: op,
-              child: SizedBox(
-                width: 10,
-                height: 10,
-                child: CustomPaint(painter: _DotMark()),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _DotMark extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = _C.cyan
-      ..strokeWidth = 1.2
-      ..strokeCap = StrokeCap.round;
-    final cx = size.width / 2, cy = size.height / 2;
-    canvas.drawLine(Offset(cx - 4, cy), Offset(cx + 4, cy), p);
-    canvas.drawLine(Offset(cx, cy - 4), Offset(cx, cy + 4), p);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter _) => false;
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// WIDGETS
-// ══════════════════════════════════════════════════════════════════════════════
 class _TopBtn extends StatelessWidget {
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
   const _TopBtn({
     required this.icon,
-    this.color = _C.textHi,
+    this.color = const Color(0xFFF1F1F5),
     required this.onTap,
   });
-
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -1270,9 +1250,6 @@ class _ShutterBtnState extends State<_ShutterBtn>
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// TIPS SHEET
-// ══════════════════════════════════════════════════════════════════════════════
 class _TipsSheet extends StatelessWidget {
   const _TipsSheet();
   @override
@@ -1285,7 +1262,7 @@ class _TipsSheet extends StatelessWidget {
           width: 40,
           height: 4,
           decoration: BoxDecoration(
-            color: _C.textLo,
+            color: const Color(0xFF4A4A60),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -1293,7 +1270,7 @@ class _TipsSheet extends StatelessWidget {
         const Text(
           'Scanning Tips',
           style: TextStyle(
-            color: _C.textHi,
+            color: Color(0xFFF1F1F5),
             fontSize: 17,
             fontWeight: FontWeight.w700,
           ),
@@ -1353,7 +1330,7 @@ class _TipsSheet extends StatelessWidget {
                       Text(
                         t.$3,
                         style: const TextStyle(
-                          color: _C.textHi,
+                          color: Color(0xFFF1F1F5),
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                         ),
@@ -1362,7 +1339,7 @@ class _TipsSheet extends StatelessWidget {
                       Text(
                         t.$4,
                         style: const TextStyle(
-                          color: _C.textMid,
+                          color: Color(0xFF8E8EA8),
                           fontSize: 12,
                           height: 1.5,
                         ),
@@ -1379,9 +1356,6 @@ class _TipsSheet extends StatelessWidget {
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SCANNING DOTS
-// ══════════════════════════════════════════════════════════════════════════════
 class _ScanningDots extends StatefulWidget {
   @override
   State<_ScanningDots> createState() => _ScanningDotsState();
@@ -1419,7 +1393,7 @@ class _ScanningDotsState extends State<_ScanningDots>
           height: 8,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: _C.primary.withOpacity(op),
+            color: const Color(0xFF6366F1).withOpacity(op),
           ),
         );
       }),

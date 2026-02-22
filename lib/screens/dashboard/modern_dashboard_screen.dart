@@ -1,28 +1,90 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../detection_screen.dart';
 import '../history_screen.dart';
 import '../doctor_list_screen.dart';
 import '../info_screen.dart';
+import '../body_part_screen.dart'; // ← actual filename in your project
+import '../../blocs/detection/detection_bloc.dart'; // ← one extra ../ because dashboard/ is nested
 import 'learn_tab.dart';
 
 class _C {
-  static const bg = Color(0xFF0F0F14); // dark page bg
-  static const surface = Color(0xFF1A1A24); // cards
-  static const surfaceAlt = Color(0xFF22222F); // elevated surface
-  static const primary = Color(0xFF6366F1); // indigo
-  static const primaryLit = Color(0xFF818CF8); // lighter indigo
-  static const accent = Color(0xFF8B5CF6); // violet
-  static const pink = Color(0xFFEC4899); // pink accent
-  static const green = Color(0xFF10B981); // success
-  static const amber = Color(0xFFF59E0B); // warning
-  static const textHi = Color(0xFFF1F1F5); // primary text
-  static const textMid = Color(0xFF8E8EA8); // secondary text
-  static const textLo = Color(0xFF4A4A60); // disabled / border
-  static const border = Color(0xFF252535); // dividers
+  static const bg = Color(0xFF0F0F14);
+  static const surface = Color(0xFF1A1A24);
+  static const surfaceAlt = Color(0xFF22222F);
+  static const primary = Color(0xFF6366F1);
+  static const primaryLit = Color(0xFF818CF8);
+  static const accent = Color(0xFF8B5CF6);
+  static const pink = Color(0xFFEC4899);
+  static const green = Color(0xFF10B981);
+  static const amber = Color(0xFFF59E0B);
+  static const textHi = Color(0xFFF1F1F5);
+  static const textMid = Color(0xFF8E8EA8);
+  static const textLo = Color(0xFF4A4A60);
+  static const border = Color(0xFF252535);
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// SHARED NAVIGATION HELPER
+// Call this from ANY place that wants to start a scan (camera button, quick
+// action, etc.). It always opens BodyPartSelectorScreen first, then routes
+// to DetectionScreen with the chosen body part.
+// ══════════════════════════════════════════════════════════════════════════════
+void _openBodyPartSelector(BuildContext context) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => BodyPartSelectorScreen(
+        onConfirm: (BodyPart part, bool fromGallery) async {
+          // Close the selector sheet/screen
+          Navigator.pop(context);
+
+          if (fromGallery) {
+            // ── Gallery path: pick image → fire bloc event → DetectionScreen
+            //    (DetectionScreen will handle the BlocListener → ResultScreen)
+            final XFile? img = await ImagePicker().pickImage(
+              source: ImageSource.gallery,
+              maxWidth: 1024,
+              maxHeight: 1024,
+              imageQuality: 85,
+            );
+            if (img == null) return;
+            if (!context.mounted) return;
+
+            // Fire detection with the picked file
+            context.read<DetectionBloc>().add(
+              DetectDiseaseEvent(File(img.path)),
+            );
+
+            // Navigate to DetectionScreen so BlocListener can push ResultScreen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DetectionScreen(bodyPart: part),
+              ),
+            );
+          } else {
+            // ── Camera path: go straight to DetectionScreen with bodyPart
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DetectionScreen(bodyPart: part),
+              ),
+            );
+          }
+        },
+      ),
+    ),
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MAIN DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════════
 class ModernDashboardScreen extends StatefulWidget {
   const ModernDashboardScreen({Key? key}) : super(key: key);
 
@@ -33,13 +95,6 @@ class ModernDashboardScreen extends StatefulWidget {
 class _ModernDashboardScreenState extends State<ModernDashboardScreen> {
   int _tab = 0;
 
-  static const _tabs = [
-    _HomeTab(),
-    const HistoryScreen(),
-    const LearnTab(),
-    _ProfilePlaceholder(),
-  ];
-
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
@@ -49,23 +104,31 @@ class _ModernDashboardScreenState extends State<ModernDashboardScreen> {
       ),
     );
 
+    // Build tab list here so we can pass context to _HomeTab
+    final tabs = [
+      _HomeTab(onScanTap: () => _openBodyPartSelector(context)),
+      const HistoryScreen(),
+      const LearnTab(),
+      const _ProfilePlaceholder(),
+    ];
+
     return Scaffold(
       backgroundColor: _C.bg,
       extendBody: true,
-      body: IndexedStack(index: _tab, children: _tabs),
-
+      body: IndexedStack(index: _tab, children: tabs),
       bottomNavigationBar: _BottomNav(
         currentIndex: _tab,
         onTap: (i) => setState(() => _tab = i),
-        onCameraPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const DetectionScreen()),
-        ),
+        // ✅ FIX: camera FAB now goes through selector
+        onCameraPressed: () => _openBodyPartSelector(context),
       ),
     );
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// BOTTOM NAV (unchanged structure, just receives fixed callback)
+// ══════════════════════════════════════════════════════════════════════════════
 class _BottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
@@ -79,8 +142,6 @@ class _BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-
     return Container(
       decoration: BoxDecoration(
         color: _C.surface,
@@ -96,7 +157,7 @@ class _BottomNav extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 60, // fixed height — no overflow
+          height: 60,
           child: Row(
             children: [
               _NavItem(
@@ -113,7 +174,6 @@ class _BottomNav extends StatelessWidget {
                 current: currentIndex,
                 onTap: onTap,
               ),
-              // Centre camera button
               _CameraButton(onPressed: onCameraPressed),
               _NavItem(
                 icon: Icons.school_rounded,
@@ -220,10 +280,13 @@ class _CameraButton extends StatelessWidget {
   }
 }
 
-// HOME TAB
-
+// ══════════════════════════════════════════════════════════════════════════════
+// HOME TAB — receives onScanTap so Quick Actions use the same selector flow
+// ══════════════════════════════════════════════════════════════════════════════
 class _HomeTab extends StatelessWidget {
-  const _HomeTab();
+  // ✅ Callback passed down from dashboard so all scan triggers are consistent
+  final VoidCallback onScanTap;
+  const _HomeTab({required this.onScanTap});
 
   @override
   Widget build(BuildContext context) {
@@ -275,9 +338,13 @@ class _HomeTab extends StatelessWidget {
           sliver: SliverToBoxAdapter(child: _SectionLabel('Quick Actions')),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 14)),
+
+        // ✅ Pass onScanTap into _QuickActions
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          sliver: SliverToBoxAdapter(child: _QuickActions()),
+          sliver: SliverToBoxAdapter(
+            child: _QuickActions(onScanTap: onScanTap),
+          ),
         ),
 
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
@@ -332,14 +399,118 @@ class _HomeTab extends StatelessWidget {
           sliver: SliverToBoxAdapter(child: _HealthTip()),
         ),
 
-        // Bottom padding (accounts for nav bar + safe area)
         const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
     );
   }
 }
 
-// HEADER
+// ══════════════════════════════════════════════════════════════════════════════
+// QUICK ACTIONS — Scan now triggers selector
+// ══════════════════════════════════════════════════════════════════════════════
+class _QuickActions extends StatelessWidget {
+  final VoidCallback onScanTap;
+  const _QuickActions({required this.onScanTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = [
+      // ✅ FIX: Scan uses onScanTap (goes through BodyPartSelectorScreen)
+      _QA(
+        icon: Icons.camera_alt_rounded,
+        label: 'Scan',
+        color: _C.primary,
+        onTap: onScanTap,
+      ),
+      _QA(
+        icon: Icons.history_rounded,
+        label: 'History',
+        color: _C.pink,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const HistoryScreen()),
+        ),
+      ),
+      _QA(
+        icon: Icons.info_rounded,
+        label: 'Diseases',
+        color: _C.green,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const InfoScreen()),
+        ),
+      ),
+      _QA(
+        icon: Icons.local_hospital_rounded,
+        label: 'Doctors',
+        color: _C.amber,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const DoctorListScreen()),
+        ),
+      ),
+    ];
+
+    return Row(
+      children: actions.asMap().entries.map((e) {
+        final isLast = e.key == actions.length - 1;
+        final a = e.value;
+        return Expanded(
+          child: GestureDetector(
+            onTap: a.onTap,
+            child: Container(
+              margin: EdgeInsets.only(right: isLast ? 0 : 10),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: _C.surface,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: _C.border),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: a.color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(a.icon, color: a.color, size: 22),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    a.label,
+                    style: const TextStyle(
+                      color: _C.textHi,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _QA {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _QA({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// UNCHANGED WIDGETS BELOW
+// ══════════════════════════════════════════════════════════════════════════════
 
 class _Header extends StatelessWidget {
   @override
@@ -356,13 +527,12 @@ class _Header extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Avatar
           Container(
             width: 46,
             height: 46,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(colors: [_C.primary, _C.accent]),
+              gradient: LinearGradient(colors: [_C.primary, _C.accent]),
             ),
             child: const Center(
               child: Text(
@@ -395,7 +565,6 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-          // Notification bell
           Stack(
             children: [
               Container(
@@ -438,8 +607,6 @@ class _Header extends StatelessWidget {
     return 'Good evening 👋';
   }
 }
-
-// STAT CARD
 
 class _StatCard extends StatelessWidget {
   final String label;
@@ -491,116 +658,10 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-// QUICK ACTIONS
-
-class _QuickActions extends StatelessWidget {
-  const _QuickActions();
-
-  @override
-  Widget build(BuildContext context) {
-    final actions = [
-      _QA(
-        icon: Icons.camera_alt_rounded,
-        label: 'Scan',
-        color: _C.primary,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const DetectionScreen()),
-        ),
-      ),
-      _QA(
-        icon: Icons.history_rounded,
-        label: 'History',
-        color: _C.pink,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const HistoryScreen()),
-        ),
-      ),
-      _QA(
-        icon: Icons.info_rounded,
-        label: 'Diseases',
-        color: _C.green,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const InfoScreen()),
-        ),
-      ),
-      _QA(
-        icon: Icons.local_hospital_rounded,
-        label: 'Doctors',
-        color: _C.amber,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const DoctorListScreen()),
-        ),
-      ),
-    ];
-
-    return Row(
-      children: actions
-          .map(
-            (a) => Expanded(
-              child: GestureDetector(
-                onTap: a.onTap,
-                child: Container(
-                  margin: EdgeInsets.only(right: a == actions.last ? 0 : 10),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: _C.surface,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: _C.border),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: a.color.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(a.icon, color: a.color, size: 22),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        a.label,
-                        style: const TextStyle(
-                          color: _C.textHi,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          )
-          .toList(),
-    );
-  }
-}
-
-class _QA {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  const _QA({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-}
-
-// SCAN CARD (horizontal scroll)
-
 class _ScanCard extends StatelessWidget {
   final String disease;
   final String date;
   final double confidence;
-
   const _ScanCard({
     required this.disease,
     required this.date,
@@ -626,16 +687,13 @@ class _ScanCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Image placeholder
           Container(
             height: 90,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: _C.surfaceAlt,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(20),
-              ),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
-            child: Center(
+            child: const Center(
               child: Icon(Icons.image_rounded, size: 32, color: _C.textLo),
             ),
           ),
@@ -690,11 +748,8 @@ class _ScanCard extends StatelessWidget {
   }
 }
 
-// HEALTH TIP
-
 class _HealthTip extends StatelessWidget {
   const _HealthTip();
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -749,12 +804,9 @@ class _HealthTip extends StatelessWidget {
   }
 }
 
-// SECTION LABEL
-
 class _SectionLabel extends StatelessWidget {
   final String text;
   const _SectionLabel(this.text);
-
   @override
   Widget build(BuildContext context) => Text(
     text,
@@ -763,28 +815,6 @@ class _SectionLabel extends StatelessWidget {
       fontSize: 17,
       fontWeight: FontWeight.w700,
     ),
-  );
-}
-
-// PLACEHOLDER TABS  (replace with real content later)
-
-class _HistoryPlaceholder extends StatelessWidget {
-  const _HistoryPlaceholder();
-  @override
-  Widget build(BuildContext context) => const _PlaceholderPage(
-    icon: Icons.history_rounded,
-    title: 'Scan History',
-    subtitle: 'Your past skin scans will appear here.',
-  );
-}
-
-class _LearnPlaceholder extends StatelessWidget {
-  const _LearnPlaceholder();
-  @override
-  Widget build(BuildContext context) => const _PlaceholderPage(
-    icon: Icons.school_rounded,
-    title: 'Education',
-    subtitle: 'Learn about skin conditions and care tips.',
   );
 }
 
@@ -802,7 +832,6 @@ class _PlaceholderPage extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-
   const _PlaceholderPage({
     required this.icon,
     required this.title,
