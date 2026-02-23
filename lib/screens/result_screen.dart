@@ -1,13 +1,3 @@
-// ============================================================================
-// RESULT SCREEN (Updated) — with Severity/Risk Level + Body Part context
-// File: lib/screens/result_screen.dart
-//
-// Changes vs original:
-//   1. Accepts optional BodyPart from selector
-//   2. New _RiskLevelCard showing severity badge, gauge, and action guidance
-//   3. Risk level derived from confidence + disease code mapping
-// ============================================================================
-
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,7 +10,6 @@ import '../utils/constants.dart';
 import 'doctor_list_screen.dart';
 import 'body_part_screen.dart'; // ← import BodyPart enum
 
-// ── Color palette ─────────────────────────────────────────────────────────────
 class _C {
   static const bg = Color(0xFF0F0F14);
   static const surface = Color(0xFF1A1A24);
@@ -38,9 +27,6 @@ class _C {
   static const border = Color(0xFF252535);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// RISK LEVEL MODEL
-// ══════════════════════════════════════════════════════════════════════════════
 enum RiskLevel { low, moderate, high, veryHigh }
 
 extension RiskLevelInfo on RiskLevel {
@@ -122,7 +108,6 @@ extension RiskLevelInfo on RiskLevel {
     }
   }
 
-  /// 0.0 – 1.0 for the gauge fill
   double get gaugeValue {
     switch (this) {
       case RiskLevel.low:
@@ -137,24 +122,15 @@ extension RiskLevelInfo on RiskLevel {
   }
 }
 
-// ── Map disease codes to a base risk level ────────────────────────────────────
-// Adjust these to your actual disease codes from DiseaseLabels
 class _RiskMapper {
-  /// Returns a RiskLevel based on disease code and model confidence.
   static RiskLevel compute(String diseaseCode, double confidence) {
-    // Base risk per disease type
     final baseRisk = _baseRisk(diseaseCode);
 
-    // Modulate by confidence:
-    // Low confidence on a high-risk disease still flags it; high confidence on
-    // a low-risk disease stays low.
     if (confidence < 0.5) {
-      // Uncertain prediction — cap at moderate regardless
       if (baseRisk.index > RiskLevel.moderate.index) return RiskLevel.moderate;
       return baseRisk;
     }
     if (confidence >= 0.85) {
-      // Very confident — elevate one step if base is already moderate or above
       if (baseRisk == RiskLevel.moderate) return RiskLevel.high;
       if (baseRisk == RiskLevel.high) return RiskLevel.veryHigh;
     }
@@ -162,7 +138,6 @@ class _RiskMapper {
   }
 
   static RiskLevel _baseRisk(String code) {
-    // ── Customize these mappings to match your DiseaseLabels ──────────────────
     const lowRisk = {
       'df', // Dermatofibroma
       'nv', // Melanocytic nevi (common moles)
@@ -185,18 +160,14 @@ class _RiskMapper {
     if (highRisk.contains(code)) return RiskLevel.high;
     if (moderateRisk.contains(code)) return RiskLevel.moderate;
     if (lowRisk.contains(code)) return RiskLevel.low;
-    // Default unknown disease to moderate
+
     return RiskLevel.moderate;
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// RESULT SCREEN
-// ══════════════════════════════════════════════════════════════════════════════
 class ResultScreen extends StatefulWidget {
   final DetectionResult result;
 
-  /// Optional body part selected before scanning
   final BodyPart? bodyPart;
 
   const ResultScreen({super.key, required this.result, this.bodyPart});
@@ -267,7 +238,6 @@ class _ResultScreenState extends State<ResultScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ── Body part context badge ──────────────────────────────────
                   if (widget.bodyPart != null) ...[
                     _buildBodyPartBadge(),
                     const SizedBox(height: 12),
@@ -276,7 +246,6 @@ class _ResultScreenState extends State<ResultScreen>
                   _buildResultCard(),
                   const SizedBox(height: 16),
 
-                  // ── NEW: Risk Level Card ─────────────────────────────────────
                   _RiskLevelCard(
                     riskLevel: _riskLevel,
                     confidence: widget.result.confidence,
@@ -303,7 +272,6 @@ class _ResultScreenState extends State<ResultScreen>
     );
   }
 
-  // ── Body Part badge (shown at top of results if selected) ──────────────────
   Widget _buildBodyPartBadge() {
     final bp = widget.bodyPart!;
     return Container(
@@ -452,7 +420,7 @@ class _ResultScreenState extends State<ResultScreen>
               ),
             ),
           ),
-          // Risk badge on image (top-right corner)
+
           Positioned(
             top: 14,
             right: 16,

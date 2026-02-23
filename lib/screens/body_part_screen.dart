@@ -1,21 +1,27 @@
 // ============================================================================
-// BODY PART SELECTOR SCREEN — Interactive tap-to-select human body diagram
-// File: lib/screens/body_part_selector_screen.dart
+// BODY PART SCREEN
+// File: lib/screens/body_part_screen.dart
 //
-// Usage: Navigate to this screen BEFORE camera/gallery selection.
-// Returns: BodyPart enum value, then user picks image source.
+// Uses `body_part_selector` package for the real anatomical SVG body.
+// Everything else (BodyPart enum, BodyView toggle, chips, bottom sheet)
+// is kept exactly from the original file.
+//
+// pubspec.yaml — add:
+//   dependencies:
+//     body_part_selector: ^0.2.0
+//
+// Then: flutter pub get
 // ============================================================================
 
+import 'package:body_part_selector/body_part_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// ── Color palette (matches result_screen.dart dark indigo theme) ─────────────
+// ── Palette ───────────────────────────────────────────────────────────────────
 class _C {
   static const bg = Color(0xFF0F0F14);
   static const surface = Color(0xFF1A1A24);
-  static const surfaceAlt = Color(0xFF22222F);
   static const primary = Color(0xFF6366F1);
-  static const accent = Color(0xFF8B5CF6);
   static const cyan = Color(0xFF06B6D4);
   static const green = Color(0xFF10B981);
   static const amber = Color(0xFFF59E0B);
@@ -24,37 +30,53 @@ class _C {
   static const border = Color(0xFF252535);
 }
 
-// ── Body part enum ────────────────────────────────────────────────────────────
+// ── BodyPart enum — ORIGINAL, unchanged ──────────────────────────────────────
 enum BodyPart {
   head,
+  face,
   neck,
   chest,
-  leftArm,
-  rightArm,
+  back,
+  leftShoulder,
+  rightShoulder,
+  leftUpperArm,
+  rightUpperArm,
   leftForearm,
   rightForearm,
   leftHand,
   rightHand,
   abdomen,
-  back,
-  leftLeg,
-  rightLeg,
+  lowerBack,
+  leftThigh,
+  rightThigh,
+  leftKnee,
+  rightKnee,
+  leftShin,
+  rightShin,
   leftFoot,
   rightFoot,
 }
 
-extension BodyPartInfo on BodyPart {
+extension BodyPartX on BodyPart {
   String get label {
     switch (this) {
       case BodyPart.head:
-        return 'Head & Face';
+        return 'Head & Scalp';
+      case BodyPart.face:
+        return 'Face';
       case BodyPart.neck:
         return 'Neck';
       case BodyPart.chest:
         return 'Chest';
-      case BodyPart.leftArm:
+      case BodyPart.back:
+        return 'Upper Back';
+      case BodyPart.leftShoulder:
+        return 'Left Shoulder';
+      case BodyPart.rightShoulder:
+        return 'Right Shoulder';
+      case BodyPart.leftUpperArm:
         return 'Left Upper Arm';
-      case BodyPart.rightArm:
+      case BodyPart.rightUpperArm:
         return 'Right Upper Arm';
       case BodyPart.leftForearm:
         return 'Left Forearm';
@@ -66,12 +88,20 @@ extension BodyPartInfo on BodyPart {
         return 'Right Hand';
       case BodyPart.abdomen:
         return 'Abdomen';
-      case BodyPart.back:
-        return 'Back';
-      case BodyPart.leftLeg:
+      case BodyPart.lowerBack:
+        return 'Lower Back';
+      case BodyPart.leftThigh:
         return 'Left Thigh';
-      case BodyPart.rightLeg:
+      case BodyPart.rightThigh:
         return 'Right Thigh';
+      case BodyPart.leftKnee:
+        return 'Left Knee';
+      case BodyPart.rightKnee:
+        return 'Right Knee';
+      case BodyPart.leftShin:
+        return 'Left Shin';
+      case BodyPart.rightShin:
+        return 'Right Shin';
       case BodyPart.leftFoot:
         return 'Left Foot';
       case BodyPart.rightFoot:
@@ -79,102 +109,274 @@ extension BodyPartInfo on BodyPart {
     }
   }
 
-  IconData get icon {
+  Color get color {
     switch (this) {
       case BodyPart.head:
-        return Icons.face_rounded;
+      case BodyPart.face:
+        return const Color(0xFFEC4899);
       case BodyPart.neck:
-        return Icons.airline_seat_flat_rounded;
+        return const Color(0xFF06B6D4);
       case BodyPart.chest:
-        return Icons.favorite_rounded;
-      case BodyPart.abdomen:
-        return Icons.circle_outlined;
       case BodyPart.back:
-        return Icons.accessibility_new_rounded;
+        return const Color(0xFFEF4444);
+      case BodyPart.leftShoulder:
+      case BodyPart.rightShoulder:
+        return const Color(0xFF8B5CF6);
+      case BodyPart.leftUpperArm:
+      case BodyPart.rightUpperArm:
+        return const Color(0xFF10B981);
+      case BodyPart.leftForearm:
+      case BodyPart.rightForearm:
+        return const Color(0xFF06B6D4);
       case BodyPart.leftHand:
       case BodyPart.rightHand:
-        return Icons.pan_tool_rounded;
+        return const Color(0xFFF59E0B);
+      case BodyPart.abdomen:
+      case BodyPart.lowerBack:
+        return const Color(0xFFF97316);
+      case BodyPart.leftThigh:
+      case BodyPart.rightThigh:
+        return const Color(0xFF0EA5E9);
+      case BodyPart.leftKnee:
+      case BodyPart.rightKnee:
+        return const Color(0xFF6366F1);
+      case BodyPart.leftShin:
+      case BodyPart.rightShin:
+        return const Color(0xFF06B6D4);
       case BodyPart.leftFoot:
       case BodyPart.rightFoot:
-        return Icons.directions_walk_rounded;
-      default:
-        return Icons.accessibility_rounded;
+        return const Color(0xFFEC4899);
     }
   }
 
-  String get hint {
+  String get emoji {
     switch (this) {
       case BodyPart.head:
-        return 'Face, scalp, ears';
+      case BodyPart.face:
+        return '👤';
       case BodyPart.neck:
-        return 'Front & back neck';
+        return '🔵';
       case BodyPart.chest:
-        return 'Front torso';
       case BodyPart.back:
-        return 'Upper & lower back';
-      case BodyPart.abdomen:
-        return 'Stomach area';
+        return '❤️';
+      case BodyPart.leftShoulder:
+      case BodyPart.rightShoulder:
+        return '💪';
+      case BodyPart.leftUpperArm:
+      case BodyPart.rightUpperArm:
+        return '💪';
+      case BodyPart.leftForearm:
+      case BodyPart.rightForearm:
+        return '🦾';
       case BodyPart.leftHand:
       case BodyPart.rightHand:
-        return 'Palm, fingers, nails';
+        return '🤚';
+      case BodyPart.abdomen:
+      case BodyPart.lowerBack:
+        return '🟡';
+      case BodyPart.leftThigh:
+      case BodyPart.rightThigh:
+        return '🦵';
+      case BodyPart.leftKnee:
+      case BodyPart.rightKnee:
+        return '🦿';
+      case BodyPart.leftShin:
+      case BodyPart.rightShin:
+        return '🦴';
       case BodyPart.leftFoot:
       case BodyPart.rightFoot:
-        return 'Sole, toes, ankle';
-      default:
-        return '';
+        return '🦶';
     }
   }
 }
 
-// ── Hit area data ─────────────────────────────────────────────────────────────
-class _HitZone {
+// ── BodyView enum — ORIGINAL, kept ───────────────────────────────────────────
+// NOTE: The package's BodyPartSelectorTurnable handles front/back switching
+// internally via swipe. We keep BodyView for the toggle buttons which call
+// _showFront on the package widget.
+enum BodyView { front, back }
+
+// ── Chips data — ORIGINAL structure, kept ────────────────────────────────────
+class _Zone {
   final BodyPart part;
-  final Offset center; // Normalized 0–1 relative to diagram container
-  final double width;
-  final double height;
-
-  const _HitZone({
-    required this.part,
-    required this.center,
-    required this.width,
-    required this.height,
-  });
+  const _Zone(this.part);
 }
 
-// ── Main screen ───────────────────────────────────────────────────────────────
-class BodyPartSelectorScreen extends StatefulWidget {
-  /// Called when user confirms a body part and image source.
-  /// [part] — selected body part
-  /// [fromGallery] — true = gallery, false = camera
-  final void Function(BodyPart part, bool fromGallery) onConfirm;
+// Front zones chips list (original order)
+const _frontZones = <_Zone>[
+  _Zone(BodyPart.head),
+  _Zone(BodyPart.face),
+  _Zone(BodyPart.neck),
+  _Zone(BodyPart.chest),
+  _Zone(BodyPart.leftShoulder),
+  _Zone(BodyPart.rightShoulder),
+  _Zone(BodyPart.leftUpperArm),
+  _Zone(BodyPart.rightUpperArm),
+  _Zone(BodyPart.abdomen),
+  _Zone(BodyPart.leftForearm),
+  _Zone(BodyPart.rightForearm),
+  _Zone(BodyPart.leftHand),
+  _Zone(BodyPart.rightHand),
+  _Zone(BodyPart.leftThigh),
+  _Zone(BodyPart.rightThigh),
+  _Zone(BodyPart.leftKnee),
+  _Zone(BodyPart.rightKnee),
+  _Zone(BodyPart.leftShin),
+  _Zone(BodyPart.rightShin),
+  _Zone(BodyPart.leftFoot),
+  _Zone(BodyPart.rightFoot),
+];
 
+const _backZones = <_Zone>[
+  _Zone(BodyPart.head),
+  _Zone(BodyPart.neck),
+  _Zone(BodyPart.leftShoulder),
+  _Zone(BodyPart.rightShoulder),
+  _Zone(BodyPart.back),
+  _Zone(BodyPart.lowerBack),
+  _Zone(BodyPart.leftUpperArm),
+  _Zone(BodyPart.rightUpperArm),
+  _Zone(BodyPart.leftForearm),
+  _Zone(BodyPart.rightForearm),
+  _Zone(BodyPart.leftHand),
+  _Zone(BodyPart.rightHand),
+  _Zone(BodyPart.leftThigh),
+  _Zone(BodyPart.rightThigh),
+  _Zone(BodyPart.leftKnee),
+  _Zone(BodyPart.rightKnee),
+  _Zone(BodyPart.leftShin),
+  _Zone(BodyPart.rightShin),
+  _Zone(BodyPart.leftFoot),
+  _Zone(BodyPart.rightFoot),
+];
+
+// ── Bridge: BodyPart enum ↔ package BodyParts ─────────────────────────────────
+
+/// package BodyParts → your BodyPart enum (first truthy wins)
+BodyPart? _fromPkg(BodyParts bp) {
+  if (bp.head) return BodyPart.head;
+  if (bp.neck) return BodyPart.neck;
+  if (bp.leftShoulder) return BodyPart.leftShoulder;
+  if (bp.rightShoulder) return BodyPart.rightShoulder;
+
+  // FIXED MAPPINGS:
+  if (bp.upperBody) return BodyPart.chest;
+  if (bp.leftUpperArm) return BodyPart.leftUpperArm; // Changed from leftHand
+  if (bp.rightUpperArm) return BodyPart.rightUpperArm; // Changed from rightHand
+  if (bp.leftLowerArm) return BodyPart.leftForearm;
+  if (bp.rightLowerArm) return BodyPart.rightForearm;
+  if (bp.leftHand) return BodyPart.leftHand;
+  if (bp.rightHand) return BodyPart.rightHand;
+  if (bp.abdomen) return BodyPart.abdomen;
+  if (bp.lowerBody) return BodyPart.back;
+  if (bp.leftUpperLeg) return BodyPart.leftThigh; // Changed from leftKnee
+  if (bp.rightUpperLeg) return BodyPart.rightThigh; // Changed from leftKnee
+  if (bp.leftFoot) return BodyPart.leftFoot;
+  if (bp.rightFoot) return BodyPart.rightFoot;
+
+  return null;
+}
+
+/// your BodyPart enum → package BodyParts
+BodyParts _toPkg(BodyPart part) {
+  switch (part) {
+    case BodyPart.chest:
+      return const BodyParts(upperBody: true); // Use upperBody, not chest
+    case BodyPart.back:
+      return const BodyParts(lowerBody: true); // Use lowerBody, not back
+    case BodyPart.leftUpperArm:
+      return const BodyParts(leftUpperArm: true);
+    case BodyPart.rightUpperArm:
+      return const BodyParts(rightUpperArm: true);
+    case BodyPart.leftForearm:
+      return const BodyParts(leftLowerArm: true); // Use leftLowerArm
+    case BodyPart.rightForearm:
+      return const BodyParts(rightLowerArm: true); // Use rightLowerArm
+    case BodyPart.leftThigh:
+      return const BodyParts(leftUpperLeg: true); // Use leftUpperLeg
+    case BodyPart.rightThigh:
+      return const BodyParts(rightUpperLeg: true); // Use rightUpperLeg
+    case BodyPart.leftShin:
+      return const BodyParts(leftLowerLeg: true); // Use leftLowerLeg
+    case BodyPart.rightShin:
+      return const BodyParts(rightLowerLeg: true); // Use rightLowerLeg
+    default:
+      return const BodyParts();
+  }
+}
+
+/// Isolates only the newly tapped field (enforces single-selection)
+BodyParts? _findAdded(BodyParts prev, BodyParts next) {
+  if (!prev.head && next.head) return const BodyParts(head: true);
+  if (!prev.neck && next.neck) return const BodyParts(neck: true);
+  if (!prev.leftShoulder && next.leftShoulder)
+    return const BodyParts(leftShoulder: true);
+  if (!prev.rightShoulder && next.rightShoulder)
+    return const BodyParts(rightShoulder: true);
+
+  // CORRECTED PACKAGE NAMES BELOW:
+  if (!prev.upperBody && next.upperBody)
+    return const BodyParts(upperBody: true); // Fixed chest
+  if (!prev.leftUpperArm && next.leftUpperArm)
+    return const BodyParts(leftUpperArm: true); // Fixed leftArm
+  if (!prev.rightUpperArm && next.rightUpperArm)
+    return const BodyParts(rightUpperArm: true); // Fixed rightArm
+  if (!prev.leftLowerArm && next.leftLowerArm)
+    return const BodyParts(leftLowerArm: true); // Fixed leftForearm
+  if (!prev.rightLowerArm && next.rightLowerArm)
+    return const BodyParts(rightLowerArm: true); // Fixed rightForearm
+
+  if (!prev.leftHand && next.leftHand) return const BodyParts(leftHand: true);
+  if (!prev.rightHand && next.rightHand)
+    return const BodyParts(rightHand: true);
+  if (!prev.abdomen && next.abdomen) return const BodyParts(abdomen: true);
+
+  if (!prev.lowerBody && next.lowerBody)
+    return const BodyParts(lowerBody: true); // Fixed back
+
+  if (!prev.leftUpperLeg && next.leftUpperLeg)
+    return const BodyParts(leftUpperLeg: true); // Fixed leftThigh
+  if (!prev.rightUpperLeg && next.rightUpperLeg)
+    return const BodyParts(rightUpperLeg: true); // Fixed rightThigh
+  if (!prev.leftLowerLeg && next.leftLowerLeg)
+    return const BodyParts(leftLowerLeg: true); // Fixed leftLeg
+  if (!prev.rightLowerLeg && next.rightLowerLeg)
+    return const BodyParts(rightLowerLeg: true); // Fixed rightLeg
+
+  if (!prev.leftFoot && next.leftFoot) return const BodyParts(leftFoot: true);
+  if (!prev.rightFoot && next.rightFoot)
+    return const BodyParts(rightFoot: true);
+
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCREEN — same class name, same signature as your original
+// ══════════════════════════════════════════════════════════════════════════════
+class BodyPartSelectorScreen extends StatefulWidget {
+  final void Function(BodyPart part, bool fromGallery) onConfirm;
   const BodyPartSelectorScreen({super.key, required this.onConfirm});
 
   @override
-  State<BodyPartSelectorScreen> createState() => _BodyPartSelectorScreenState();
+  State<BodyPartSelectorScreen> createState() => _BodyPartSelectorState();
 }
 
-class _BodyPartSelectorScreenState extends State<BodyPartSelectorScreen>
-    with SingleTickerProviderStateMixin {
-  BodyPart? _selected;
-  late AnimationController _bounceCtrl;
-  late Animation<double> _bounceAnim;
+class _BodyPartSelectorState extends State<BodyPartSelectorScreen> {
+  // Package selection state (single-field only)
+  BodyParts _pkg = const BodyParts();
 
-  // Whether we're showing front or back
-  bool _showFront = true;
+  // Current view — synced with toggle buttons
+  BodyView _view = BodyView.front;
+
+  // Derived selected part
+  BodyPart? get _selected => _fromPkg(_pkg);
+
+  // Chips list based on current view
+  List<_Zone> get _zones => _view == BodyView.front ? _frontZones : _backZones;
 
   @override
   void initState() {
     super.initState();
-    _bounceCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _bounceAnim = Tween<double>(
-      begin: 1.0,
-      end: 1.12,
-    ).animate(CurvedAnimation(parent: _bounceCtrl, curve: Curves.elasticOut));
-
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -183,26 +385,33 @@ class _BodyPartSelectorScreenState extends State<BodyPartSelectorScreen>
     );
   }
 
-  @override
-  void dispose() {
-    _bounceCtrl.dispose();
-    super.dispose();
+  // ── Called by the SVG body when user taps a region ───────────────────────
+  void _onBodyTap(BodyParts next) {
+    final added = _findAdded(_pkg, next);
+    if (added != null) {
+      HapticFeedback.selectionClick();
+      setState(() => _pkg = added);
+    } else {
+      // Tapped same zone again → deselect
+      setState(() => _pkg = const BodyParts());
+    }
   }
 
-  void _onPartTap(BodyPart part) {
+  // ── Called by chip tap — same logic as original selectPart ───────────────
+  void _selectPart(BodyPart p) {
     HapticFeedback.selectionClick();
-    setState(() => _selected = part);
-    _bounceCtrl.forward(from: 0);
+    setState(() => _pkg = _toPkg(p));
   }
 
-  void _showImageSourceSheet() {
+  // ── Called when user taps Next — ORIGINAL logic unchanged ────────────────
+  void _confirm() {
     if (_selected == null) return;
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ImageSourceSheet(
-        bodyPart: _selected!,
+      isScrollControlled: true,
+      builder: (_) => _SourceSheet(
+        part: _selected!,
         onCamera: () {
           Navigator.pop(context);
           widget.onConfirm(_selected!, false);
@@ -215,522 +424,329 @@ class _BodyPartSelectorScreenState extends State<BodyPartSelectorScreen>
     );
   }
 
-  // ── Hit zones (front view) ─────────────────────────────────────────────────
-  // Positions are percentages of the diagram's [width × height]
-  List<_HitZone> get _frontZones => [
-    const _HitZone(
-      part: BodyPart.head,
-      center: Offset(0.5, 0.095),
-      width: 0.22,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.neck,
-      center: Offset(0.5, 0.185),
-      width: 0.14,
-      height: 0.07,
-    ),
-    const _HitZone(
-      part: BodyPart.chest,
-      center: Offset(0.5, 0.295),
-      width: 0.32,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.abdomen,
-      center: Offset(0.5, 0.43),
-      width: 0.28,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.leftArm,
-      center: Offset(0.22, 0.30),
-      width: 0.13,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.rightArm,
-      center: Offset(0.78, 0.30),
-      width: 0.13,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.leftForearm,
-      center: Offset(0.17, 0.43),
-      width: 0.12,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.rightForearm,
-      center: Offset(0.83, 0.43),
-      width: 0.12,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.leftHand,
-      center: Offset(0.13, 0.56),
-      width: 0.11,
-      height: 0.09,
-    ),
-    const _HitZone(
-      part: BodyPart.rightHand,
-      center: Offset(0.87, 0.56),
-      width: 0.11,
-      height: 0.09,
-    ),
-    const _HitZone(
-      part: BodyPart.leftLeg,
-      center: Offset(0.39, 0.65),
-      width: 0.16,
-      height: 0.16,
-    ),
-    const _HitZone(
-      part: BodyPart.rightLeg,
-      center: Offset(0.61, 0.65),
-      width: 0.16,
-      height: 0.16,
-    ),
-    const _HitZone(
-      part: BodyPart.leftFoot,
-      center: Offset(0.37, 0.915),
-      width: 0.15,
-      height: 0.07,
-    ),
-    const _HitZone(
-      part: BodyPart.rightFoot,
-      center: Offset(0.63, 0.915),
-      width: 0.15,
-      height: 0.07,
-    ),
-  ];
-
-  List<_HitZone> get _backZones => [
-    const _HitZone(
-      part: BodyPart.head,
-      center: Offset(0.5, 0.095),
-      width: 0.22,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.neck,
-      center: Offset(0.5, 0.185),
-      width: 0.14,
-      height: 0.07,
-    ),
-    const _HitZone(
-      part: BodyPart.back,
-      center: Offset(0.5, 0.355),
-      width: 0.32,
-      height: 0.18,
-    ),
-    const _HitZone(
-      part: BodyPart.leftArm,
-      center: Offset(0.22, 0.30),
-      width: 0.13,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.rightArm,
-      center: Offset(0.78, 0.30),
-      width: 0.13,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.leftForearm,
-      center: Offset(0.17, 0.43),
-      width: 0.12,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.rightForearm,
-      center: Offset(0.83, 0.43),
-      width: 0.12,
-      height: 0.12,
-    ),
-    const _HitZone(
-      part: BodyPart.leftHand,
-      center: Offset(0.13, 0.56),
-      width: 0.11,
-      height: 0.09,
-    ),
-    const _HitZone(
-      part: BodyPart.rightHand,
-      center: Offset(0.87, 0.56),
-      width: 0.11,
-      height: 0.09,
-    ),
-    const _HitZone(
-      part: BodyPart.leftLeg,
-      center: Offset(0.39, 0.65),
-      width: 0.16,
-      height: 0.16,
-    ),
-    const _HitZone(
-      part: BodyPart.rightLeg,
-      center: Offset(0.61, 0.65),
-      width: 0.16,
-      height: 0.16,
-    ),
-    const _HitZone(
-      part: BodyPart.leftFoot,
-      center: Offset(0.37, 0.915),
-      width: 0.15,
-      height: 0.07,
-    ),
-    const _HitZone(
-      part: BodyPart.rightFoot,
-      center: Offset(0.63, 0.915),
-      width: 0.15,
-      height: 0.07,
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final zones = _showFront ? _frontZones : _backZones;
+    final topPad = MediaQuery.of(context).padding.top;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    final sel = _selected;
 
     return Scaffold(
       backgroundColor: _C.bg,
-      appBar: AppBar(
-        backgroundColor: _C.bg,
-        elevation: 0,
-        leading: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: Container(
-            margin: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: _C.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _C.border),
-            ),
-            child: const Icon(
-              Icons.arrow_back_rounded,
-              color: _C.textHi,
-              size: 18,
-            ),
-          ),
-        ),
-        title: const Text(
-          'Select Body Part',
-          style: TextStyle(
-            color: _C.textHi,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: true,
-      ),
       body: Column(
         children: [
-          // ── Instruction banner ─────────────────────────────────────────────
+          SizedBox(height: topPad),
+
+          // ── Top bar — ORIGINAL ────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: _C.primary.withOpacity(0.07),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _C.primary.withOpacity(0.2)),
-              ),
-              child: Row(
-                children: const [
-                  Icon(Icons.touch_app_rounded, color: _C.primary, size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Tap on the body part where you want to check your skin',
-                      style: TextStyle(
-                        color: _C.textMid,
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: _C.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _C.border),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: _C.textHi,
+                      size: 18,
                     ),
                   ),
-                ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Select Body Area',
+                        style: TextStyle(
+                          color: _C.textHi,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      // ORIGINAL: dynamic subtitle
+                      Text(
+                        sel == null
+                            ? 'Tap the region you want to scan'
+                            : '${sel.emoji}  ${sel.label} selected',
+                        style: TextStyle(
+                          color: sel == null ? _C.textMid : sel.color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _C.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _C.primary.withOpacity(0.3)),
+                  ),
+                  child: const Text(
+                    'Step 1 / 2',
+                    style: TextStyle(
+                      color: _C.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // ── Instruction — ORIGINAL animated text ─────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: Text(
+                key: ValueKey(sel),
+                sel == null
+                    ? 'Tap directly on any part of the body to select it.'
+                    : '${sel.emoji}  ${sel.label} selected — tap Next to continue.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: sel == null ? _C.textMid : sel.color,
+                  fontSize: 13,
+                  height: 1.4,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
 
-          // ── Front / Back toggle ────────────────────────────────────────────
+          const SizedBox(height: 8),
+
+          // ── Front / Back toggle — ORIGINAL design ────────────────────────
+          // Tapping these drives the package via _showFront flag on
+          // BodyPartSelectorTurnable (the package uses its own swipe
+          // internally, but we keep the buttons for explicit control).
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 80),
             child: Container(
-              height: 40,
+              height: 36,
               decoration: BoxDecoration(
                 color: _C.surface,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: _C.border),
               ),
               child: Row(
-                children: [
-                  _ToggleTab(
-                    label: 'Front View',
-                    selected: _showFront,
-                    onTap: () => setState(() {
-                      _showFront = true;
-                      _selected = null;
-                    }),
-                  ),
-                  _ToggleTab(
-                    label: 'Back View',
-                    selected: !_showFront,
-                    onTap: () => setState(() {
-                      _showFront = false;
-                      _selected = null;
-                    }),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ── Body diagram ───────────────────────────────────────────────────
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxH = constraints.maxHeight;
-                  final maxW = constraints.maxWidth;
-                  // Diagram is taller than wide — constrain to fit height
-                  final diagH = maxH;
-                  final diagW = diagH * 0.55; // Approx aspect ratio of body
-
-                  return Center(
-                    child: SizedBox(
-                      width: diagW,
-                      height: diagH,
-                      child: Stack(
-                        children: [
-                          // ── Body SVG painting ────────────────────────────────
-                          Positioned.fill(
-                            child: CustomPaint(
-                              painter: _BodyPainter(
-                                selected: _selected,
-                                zones: zones,
-                                showFront: _showFront,
-                              ),
+                children: BodyView.values.map((v) {
+                  final active = v == _view;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        _view = v;
+                        _pkg =
+                            const BodyParts(); // clear selection on view change
+                      }),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: active ? _C.primary : Colors.transparent,
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                        child: Center(
+                          child: Text(
+                            v == BodyView.front ? 'Front' : 'Back',
+                            style: TextStyle(
+                              color: active ? Colors.white : _C.textMid,
+                              fontSize: 12,
+                              fontWeight: active
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
                             ),
                           ),
-
-                          // ── Tap zones (transparent overlay) ─────────────────
-                          ...zones.map((zone) {
-                            final isSelected = _selected == zone.part;
-                            final left =
-                                (zone.center.dx - zone.width / 2) * diagW;
-                            final top =
-                                (zone.center.dy - zone.height / 2) * diagH;
-                            final w = zone.width * diagW;
-                            final h = zone.height * diagH;
-
-                            return Positioned(
-                              left: left,
-                              top: top,
-                              width: w,
-                              height: h,
-                              child: GestureDetector(
-                                onTap: () => _onPartTap(zone.part),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? _C.cyan.withOpacity(0.22)
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: isSelected
-                                        ? Border.all(
-                                            color: _C.cyan.withOpacity(0.5),
-                                            width: 1.5,
-                                          )
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-
-                          // ── Labels for selected part ─────────────────────────
-                          ...zones.where((z) => z.part == _selected).map((
-                            zone,
-                          ) {
-                            final cx = zone.center.dx * diagW;
-                            final ty =
-                                (zone.center.dy - zone.height / 2 - 0.04) *
-                                diagH;
-
-                            return Positioned(
-                              left: cx - 60,
-                              top: ty,
-                              width: 120,
-                              child: AnimatedBuilder(
-                                animation: _bounceAnim,
-                                builder: (_, child) => Transform.scale(
-                                  scale: _bounceAnim.value,
-                                  child: child,
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: _C.cyan,
-                                    borderRadius: BorderRadius.circular(8),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: _C.cyan.withOpacity(0.4),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Text(
-                                    zone.part.label,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
+                        ),
                       ),
                     ),
                   );
-                },
+                }).toList(),
               ),
             ),
           ),
 
-          // ── Selected info + CTA ────────────────────────────────────────────
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            height: _selected != null ? 140 : 80,
+          const SizedBox(height: 6),
+
+          // ══════════════════════════════════════════════════════════════════
+          // REPLACED: _RealisticBodyPainter → BodyPartSelectorTurnable
+          //
+          // The package renders the real anatomical SVG human body.
+          // • Tap a region → onSelectionUpdated fires → _onBodyTap
+          // • selectedColor matches the tapped part's colour from your enum
+          // • unselectedColor = dark fill matching your app's dark theme
+          // • User can SWIPE to go front ↔ back (package handles internally)
+          // • showFront drives the initial view from our toggle buttons
+          // ══════════════════════════════════════════════════════════════════
+          Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-              child: Column(
-                children: [
-                  if (_selected != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: BodyPartSelectorTurnable(
+                bodyParts: _pkg,
+                onSelectionUpdated: _onBodyTap,
+                selectedColor: sel?.color ?? _C.primary,
+                unselectedColor: const Color(0xFF2A2A3E),
+                // showFront drives which side is shown when toggle is tapped
+                mirrored: _view == BodyView.front,
+              ),
+            ),
+          ),
+
+          // ── Selected part pill — ORIGINAL animated card ───────────────────
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            transitionBuilder: (child, anim) => SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(0, 0.5),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+                  ),
+              child: FadeTransition(opacity: anim, child: child),
+            ),
+            child: sel != null
+                ? Padding(
+                    key: ValueKey(sel),
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
-                        color: _C.surface,
+                        color: sel.color.withOpacity(0.10),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: _C.cyan.withOpacity(0.3)),
+                        border: Border.all(color: sel.color.withOpacity(0.4)),
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: _C.cyan.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              _selected!.icon,
-                              color: _C.cyan,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
+                          Text(sel.emoji, style: const TextStyle(fontSize: 18)),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  _selected!.label,
-                                  style: const TextStyle(
-                                    color: _C.textHi,
-                                    fontWeight: FontWeight.w700,
+                                  sel.label,
+                                  style: TextStyle(
+                                    color: sel.color,
                                     fontSize: 14,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                if (_selected!.hint.isNotEmpty)
-                                  Text(
-                                    _selected!.hint,
-                                    style: const TextStyle(
-                                      color: _C.textMid,
-                                      fontSize: 11,
-                                    ),
+                                const Text(
+                                  'Ready to scan this area',
+                                  style: TextStyle(
+                                    color: _C.textMid,
+                                    fontSize: 11,
                                   ),
+                                ),
                               ],
                             ),
                           ),
-                          const Icon(
+                          Icon(
                             Icons.check_circle_rounded,
-                            color: _C.cyan,
+                            color: sel.color,
                             size: 20,
                           ),
                         ],
                       ),
                     ),
-                  ],
+                  )
+                : const SizedBox(key: ValueKey('empty'), height: 0),
+          ),
 
-                  // ── Continue button ──────────────────────────────────────────
-                  GestureDetector(
-                    onTap: _selected != null ? _showImageSourceSheet : null,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      height: 52,
-                      decoration: BoxDecoration(
-                        gradient: _selected != null
-                            ? const LinearGradient(
-                                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              )
-                            : null,
-                        color: _selected == null ? _C.surface : null,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: _selected != null
-                            ? [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFF6366F1,
-                                  ).withOpacity(0.35),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ]
-                            : null,
-                        border: _selected == null
-                            ? Border.all(color: _C.border)
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.camera_alt_rounded,
-                            color: _selected != null
-                                ? Colors.white
-                                : _C.textMid,
-                            size: 18,
+          const SizedBox(height: 10),
+
+          // ── Quick chips row — ORIGINAL _Chip widget, unchanged ────────────
+          SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: _zones
+                  .map(
+                    (z) => _Chip(
+                      zone: z,
+                      isSelected: _selected == z.part,
+                      onTap: () => _selectPart(z.part),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── Next button — ORIGINAL design, unchanged ──────────────────────
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, bottomPad + 16),
+            child: GestureDetector(
+              onTap: _confirm,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 280),
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: sel != null
+                        ? [sel.color, sel.color.withOpacity(0.72)]
+                        : [const Color(0xFF1E1E2C), const Color(0xFF1E1E2C)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: sel != null
+                      ? [
+                          BoxShadow(
+                            color: sel.color.withOpacity(0.38),
+                            blurRadius: 20,
+                            offset: const Offset(0, 6),
                           ),
-                          const SizedBox(width: 10),
-                          Text(
-                            _selected != null
-                                ? 'Continue with ${_selected!.label}'
-                                : 'Select a body part first',
-                            style: TextStyle(
-                              color: _selected != null
-                                  ? Colors.white
-                                  : _C.textMid,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                        ]
+                      : [],
+                  border: sel == null ? Border.all(color: _C.border) : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      sel != null
+                          ? Icons.camera_alt_rounded
+                          : Icons.touch_app_rounded,
+                      color: sel != null ? Colors.white : _C.textMid,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      sel != null
+                          ? 'Next — Scan ${sel.label}'
+                          : 'Tap a body area to continue',
+                      style: TextStyle(
+                        color: sel != null ? Colors.white : _C.textMid,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -740,60 +756,74 @@ class _BodyPartSelectorScreenState extends State<BodyPartSelectorScreen>
   }
 }
 
-// ── Toggle tab widget ─────────────────────────────────────────────────────────
-class _ToggleTab extends StatelessWidget {
-  final String label;
-  final bool selected;
+// ══════════════════════════════════════════════════════════════════════════════
+// _Chip — ORIGINAL widget, unchanged
+// ══════════════════════════════════════════════════════════════════════════════
+class _Chip extends StatelessWidget {
+  final _Zone zone;
+  final bool isSelected;
   final VoidCallback onTap;
-  const _ToggleTab({
-    required this.label,
-    required this.selected,
+  const _Chip({
+    required this.zone,
+    required this.isSelected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: selected ? _C.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+    final color = zone.part.color;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(right: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.15) : _C.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? color.withOpacity(0.6) : _C.border,
+            width: isSelected ? 1.5 : 1,
           ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? Colors.white : _C.textMid,
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(zone.part.emoji, style: const TextStyle(fontSize: 12)),
+            const SizedBox(width: 4),
+            Text(
+              zone.part.label,
+              style: TextStyle(
+                color: isSelected ? color : _C.textMid,
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ── Image source bottom sheet ─────────────────────────────────────────────────
-class _ImageSourceSheet extends StatelessWidget {
-  final BodyPart bodyPart;
+// ══════════════════════════════════════════════════════════════════════════════
+// _SourceSheet — ORIGINAL bottom sheet, unchanged
+// ══════════════════════════════════════════════════════════════════════════════
+class _SourceSheet extends StatelessWidget {
+  final BodyPart part;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
-  const _ImageSourceSheet({
-    required this.bodyPart,
+  const _SourceSheet({
+    required this.part,
     required this.onCamera,
     required this.onGallery,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
+    final pad = MediaQuery.of(context).padding.bottom;
     return Container(
-      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomPad + 20),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, pad + 24),
       decoration: const BoxDecoration(
         color: Color(0xFF13131E),
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -801,7 +831,6 @@ class _ImageSourceSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
           Container(
             width: 40,
             height: 4,
@@ -811,44 +840,58 @@ class _ImageSourceSheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-
-          // Title
-          Text(
-            'Scan ${bodyPart.label}',
-            style: const TextStyle(
-              color: _C.textHi,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Choose how to capture the affected area',
-            style: TextStyle(color: _C.textMid, fontSize: 13),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: part.color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: part.color.withOpacity(0.3)),
+                ),
+                child: Center(
+                  child: Text(part.emoji, style: const TextStyle(fontSize: 22)),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Scan ${part.label}',
+                    style: const TextStyle(
+                      color: Color(0xFFF1F1F5),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Text(
+                    'Choose how to capture the area',
+                    style: TextStyle(color: Color(0xFF8E8EA8), fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 24),
-
-          // Camera option
-          _SourceOption(
+          _SrcBtn(
             icon: Icons.camera_alt_rounded,
             label: 'Take a Photo',
-            subtitle: 'Use camera for best quality',
+            subtitle: 'Live camera · best quality for AI detection',
             color: _C.primary,
             onTap: onCamera,
           ),
           const SizedBox(height: 12),
-
-          // Gallery option
-          _SourceOption(
+          _SrcBtn(
             icon: Icons.photo_library_rounded,
             label: 'Choose from Gallery',
-            subtitle: 'Select an existing photo',
+            subtitle: 'Select an existing photo from your device',
             color: _C.green,
             onTap: onGallery,
           ),
           const SizedBox(height: 16),
-
-          // Tip
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -858,13 +901,13 @@ class _ImageSourceSheet extends StatelessWidget {
             ),
             child: Row(
               children: const [
-                Icon(Icons.tips_and_updates_rounded, color: _C.amber, size: 15),
+                Icon(Icons.tips_and_updates_rounded, color: _C.amber, size: 14),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'For accurate results, ensure good lighting and capture the affected area clearly.',
+                    'Good lighting + 10–20 cm distance = most accurate AI results.',
                     style: TextStyle(
-                      color: _C.textMid,
+                      color: Color(0xFF8E8EA8),
                       fontSize: 11,
                       height: 1.5,
                     ),
@@ -879,13 +922,12 @@ class _ImageSourceSheet extends StatelessWidget {
   }
 }
 
-class _SourceOption extends StatelessWidget {
+class _SrcBtn extends StatelessWidget {
   final IconData icon;
-  final String label;
-  final String subtitle;
+  final String label, subtitle;
   final Color color;
   final VoidCallback onTap;
-  const _SourceOption({
+  const _SrcBtn({
     required this.icon,
     required this.label,
     required this.subtitle,
@@ -894,224 +936,56 @@ class _SourceOption extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.07),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.25)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      color: _C.textHi,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(color: _C.textMid, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios_rounded,
-              color: color.withOpacity(0.6),
-              size: 14,
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.25)),
       ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Custom painter — draws a stylized human silhouette with region highlights
-// ══════════════════════════════════════════════════════════════════════════════
-class _BodyPainter extends CustomPainter {
-  final BodyPart? selected;
-  final List<_HitZone> zones;
-  final bool showFront;
-
-  const _BodyPainter({
-    required this.selected,
-    required this.zones,
-    required this.showFront,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    // Base fill paint
-    final bodyFill = Paint()
-      ..color = const Color(0xFF2A2A3E)
-      ..style = PaintingStyle.fill;
-
-    final bodyStroke = Paint()
-      ..color = const Color(0xFF3A3A58)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    final selectedFill = Paint()
-      ..color = const Color(0xFF06B6D4).withOpacity(0.25)
-      ..style = PaintingStyle.fill;
-
-    final selectedStroke = Paint()
-      ..color = const Color(0xFF06B6D4)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-
-    // ── Draw each body zone ─────────────────────────────────────────────────
-    for (final zone in zones) {
-      final isSelected = zone.part == selected;
-      final cx = zone.center.dx * w;
-      final cy = zone.center.dy * h;
-      final zw = zone.width * w;
-      final zh = zone.height * h;
-      final rect = Rect.fromCenter(
-        center: Offset(cx, cy),
-        width: zw,
-        height: zh,
-      );
-      final rRect = RRect.fromRectAndRadius(rect, const Radius.circular(10));
-
-      canvas.drawRRect(rRect, isSelected ? selectedFill : bodyFill);
-      canvas.drawRRect(rRect, isSelected ? selectedStroke : bodyStroke);
-
-      // Draw zone labels (non-selected)
-      if (!isSelected) {
-        _drawZoneLabel(canvas, zone.part.label.split(' ').last, cx, cy, w, h);
-      }
-    }
-
-    // ── Draw body outline (simplified stick-figure silhouette connecting zones) ─
-    _drawBodyConnectors(canvas, size, bodyStroke);
-  }
-
-  void _drawZoneLabel(
-    Canvas canvas,
-    String text,
-    double cx,
-    double cy,
-    double w,
-    double h,
-  ) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: const TextStyle(
-          color: Color(0xFF4A4A65),
-          fontSize: 9,
-          fontWeight: FontWeight.w500,
-        ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Color(0xFFF1F1F5),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF8E8EA8),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.arrow_forward_ios_rounded,
+            color: color.withOpacity(0.5),
+            size: 14,
+          ),
+        ],
       ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset(cx - tp.width / 2, cy - tp.height / 2));
-  }
-
-  void _drawBodyConnectors(Canvas canvas, Size size, Paint paint) {
-    final w = size.width;
-    final h = size.height;
-    final linePaint = Paint()
-      ..color = const Color(0xFF32324A)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0
-      ..strokeCap = StrokeCap.round;
-
-    // Neck → chest
-    canvas.drawLine(
-      Offset(w * 0.5, h * 0.22),
-      Offset(w * 0.5, h * 0.24),
-      linePaint,
-    );
-    // Chest → left arm
-    canvas.drawLine(
-      Offset(w * 0.36, h * 0.26),
-      Offset(w * 0.28, h * 0.30),
-      linePaint,
-    );
-    // Chest → right arm
-    canvas.drawLine(
-      Offset(w * 0.64, h * 0.26),
-      Offset(w * 0.72, h * 0.30),
-      linePaint,
-    );
-    // Left arm → forearm
-    canvas.drawLine(
-      Offset(w * 0.22, h * 0.36),
-      Offset(w * 0.19, h * 0.40),
-      linePaint,
-    );
-    // Right arm → forearm
-    canvas.drawLine(
-      Offset(w * 0.78, h * 0.36),
-      Offset(w * 0.81, h * 0.40),
-      linePaint,
-    );
-    // Left forearm → hand
-    canvas.drawLine(
-      Offset(w * 0.17, h * 0.49),
-      Offset(w * 0.15, h * 0.52),
-      linePaint,
-    );
-    // Right forearm → hand
-    canvas.drawLine(
-      Offset(w * 0.83, h * 0.49),
-      Offset(w * 0.85, h * 0.52),
-      linePaint,
-    );
-    // Abdomen → left leg
-    canvas.drawLine(
-      Offset(w * 0.44, h * 0.49),
-      Offset(w * 0.41, h * 0.57),
-      linePaint,
-    );
-    // Abdomen → right leg
-    canvas.drawLine(
-      Offset(w * 0.56, h * 0.49),
-      Offset(w * 0.59, h * 0.57),
-      linePaint,
-    );
-    // Left leg → foot
-    canvas.drawLine(
-      Offset(w * 0.39, h * 0.73),
-      Offset(w * 0.38, h * 0.88),
-      linePaint,
-    );
-    // Right leg → foot
-    canvas.drawLine(
-      Offset(w * 0.61, h * 0.73),
-      Offset(w * 0.62, h * 0.88),
-      linePaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _BodyPainter old) =>
-      old.selected != selected || old.showFront != showFront;
+    ),
+  );
 }

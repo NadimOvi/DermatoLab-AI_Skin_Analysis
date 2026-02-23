@@ -1,24 +1,9 @@
-// ============================================================================
-// LEARN TAB — Skin Disease News with WebView Integration
-// File: lib/screens/dashboard/learn_tab.dart
-//
-// Features:
-//  • Curated real news articles per disease (opens in WebView in-app)
-//  • "Quick Search" button → opens Google/PubMed search in WebView
-//  • News source cards with publisher logo, read time estimate
-//  • Featured article hero card
-//  • Category filter chips
-//  • Stats ribbon from InfoBloc data
-//  • Skeleton loading, error state, empty state
-// ============================================================================
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/info/info_bloc.dart';
 import '../../models/disease_info.dart';
 import 'webview_article_screen.dart';
 
-// ── Shared dark palette ───────────────────────────────────────────────────────
 class _C {
   static const bg = Color(0xFF0F0F14);
   static const surface = Color(0xFF1A1A24);
@@ -34,10 +19,6 @@ class _C {
   static const textLo = Color(0xFF4A4A60);
   static const border = Color(0xFF252535);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NEWS ARTICLE MODEL
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _NewsArticle {
   final String title;
@@ -61,12 +42,7 @@ class _NewsArticle {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CURATED NEWS — real, working URLs for skin disease articles
-// ─────────────────────────────────────────────────────────────────────────────
-
 final List<_NewsArticle> _allNews = [
-  // ── General skin health ───────────────────────────────────────────────────
   _NewsArticle(
     title: 'Early Detection of Skin Cancer: What You Need to Know',
     summary:
@@ -649,10 +625,6 @@ class _DiseaseSearchRow extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FEATURED ARTICLE CARD — large hero opens WebView
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _FeaturedArticleCard extends StatelessWidget {
   final _NewsArticle article;
   const _FeaturedArticleCard({required this.article});
@@ -782,10 +754,6 @@ class _FeaturedArticleCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NEWS CARD — each article in the list
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _NewsCard extends StatelessWidget {
   final _NewsArticle article;
   final int index;
@@ -813,7 +781,6 @@ class _NewsCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Source icon block
             Container(
               width: 52,
               height: 52,
@@ -832,7 +799,6 @@ class _NewsCard extends StatelessWidget {
             ),
             const SizedBox(width: 14),
 
-            // Text content
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -851,7 +817,7 @@ class _NewsCard extends StatelessWidget {
                         style: const TextStyle(color: _C.textLo, fontSize: 10),
                       ),
                       const Spacer(),
-                      // WebView indicator
+
                       Row(
                         children: const [
                           Icon(Icons.web_rounded, size: 11, color: _C.textLo),
@@ -898,10 +864,6 @@ class _NewsCard extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STATS RIBBON (uses InfoBloc disease data)
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _StatsRibbon extends StatelessWidget {
   final List<DiseaseInfo> diseases;
@@ -994,10 +956,6 @@ class _VDivider extends StatelessWidget {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SMALL WIDGETS
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _SourceBadge extends StatelessWidget {
   final String label;
   final Color color;
@@ -1069,10 +1027,6 @@ class _EmptyState extends StatelessWidget {
     ),
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SKELETON LOADING
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _SkeletonNewsCard extends StatefulWidget {
   const _SkeletonNewsCard();
