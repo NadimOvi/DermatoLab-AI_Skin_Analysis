@@ -2,7 +2,7 @@
 
 **An intelligent mobile app that helps you check your skin health using your phone's camera.**
 
-Built with Flutter and TensorFlow • Works on Android • Powered by AI
+Built with Flutter and TensorFlow Model and OpenAI
 
 ---
 
@@ -11,6 +11,10 @@ Built with Flutter and TensorFlow • Works on Android • Powered by AI
 DermatoLab is a mobile app that uses artificial intelligence to analyze photos of your skin and detect potential skin conditions. Think of it as having a dermatology assistant in your pocket - it's not a replacement for a real doctor, but it can help you understand if you should get something checked out.
 
 The app uses a machine learning model trained on thousands of medical images to identify 7 common skin conditions with pretty good accuracy. It also connects you with nearby dermatologists if you need professional help.
+
+## Demo Video
+   
+   https://github.com/NadimOvi/DermatoLab-AI_Skin_Analysis/App_video.mp4
 
 ---
 
@@ -140,15 +144,6 @@ The original dataset was very imbalanced (67% of images were just regular moles)
 - Works in real-time on phones
 - No internet needed for detection
 
-**Want to train your own model?**
-
-All the training code is in the `dermatolab-training` folder. You'll need:
-- Python 3.8+
-- TensorFlow 2.10.1
-- The HAM10000 dataset (download from Harvard Dataverse)
-- A GPU if you don't want to wait forever
-
-Just run `python scripts/train_model.py` and it'll do everything automatically.
 
 ---
 
@@ -222,15 +217,6 @@ That's why the app shows you a confidence score and risk level. If it's only 60%
 **Medical disclaimer:**
 This app is for educational purposes only. It's not medical advice and it's not a diagnostic tool. If you're worried about something on your skin, see a real doctor. Seriously.
 
-**Privacy:**
-The app doesn't collect your data. Photos are processed locally on your device. The only time data leaves your phone is when you use the AI chat (which sends text to OpenAI) or the doctor finder (which uses Google Maps).
-
-**Limitations:**
-- Works best on clear, well-lit photos
-- Can't detect every skin condition (just these 7)
-- Not suitable for emergency situations
-- Accuracy varies between different skin types
-
 ---
 
 ## Want to contribute?
@@ -265,11 +251,6 @@ Things I'm planning to add:
 
 ---
 
-## License
-
-MIT License - feel free to use this code for your own projects. Just don't claim you wrote it, and remember the medical disclaimer.
-
----
 
 ## Contact
 
@@ -280,17 +261,6 @@ Built by Nadim Ovi
 
 Found a bug? Have a question? Open an issue on GitHub.
 
----
-
-## Credits
-
-**Dataset:** HAM10000 from Harvard Dataverse
-
-**Frameworks:** Built with Flutter and TensorFlow
-
-**APIs:** Powered by OpenAI and Google Maps
-
-**Inspiration:** All the dermatologists who care about making healthcare accessible
 
 ---
 
