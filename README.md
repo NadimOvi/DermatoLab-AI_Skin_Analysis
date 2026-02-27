@@ -12,11 +12,9 @@ DermatoLab is a mobile app that uses artificial intelligence to analyze photos o
 
 The app uses a machine learning model trained on thousands of medical images to identify 7 common skin conditions with pretty good accuracy. It also connects you with nearby dermatologists if you need professional help.
 
-<h2 align="center">🎥 App Demo</h2>
+## 🎥 App Demo
 
-<p align="center">
-  <video src="App_video.mp4" controls width="600"></video>
-</p>
+https://github.com/NadimOvi/DermatoLab-AI_Skin_Analysis/blob/main/App_video.mp4
 
 ---
 
